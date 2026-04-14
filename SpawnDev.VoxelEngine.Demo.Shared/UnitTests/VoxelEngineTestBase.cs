@@ -229,7 +229,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             faceCullKernel(new Index2D(paddedXZ, paddedXZ),
                 gpuOccupancy.View, gpuFaceMasks.View, paddedXZ, height);
 
-            // Readback
+            // Synchronize before readback (required for browser backends)
+            await accelerator.SynchronizeAsync();
             var result = await gpuFaceMasks.CopyToHostAsync();
             return result;
         }

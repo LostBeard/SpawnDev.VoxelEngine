@@ -201,6 +201,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 gpuFogParams.View, gpuVisibleIndices.View, gpuVisibleCount.View,
                 chunkCount);
 
+            await accelerator.SynchronizeAsync();
             var countResult = await gpuVisibleCount.CopyToHostAsync();
             int count = Math.Min(countResult[0], chunkCount);
 

@@ -110,6 +110,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             faceCullKernel(new Index2D(paddedXZ, paddedXZ),
                 gpuOccupancy.View, gpuFaceMasks.View, paddedXZ, height);
 
+            // Synchronize before readback (required for browser backends)
+            await accelerator.SynchronizeAsync();
+
             // Save a copy of face masks for verification (greedy merge modifies them in place)
             var gpuFaceMasksForVerify = await gpuFaceMasks.CopyToHostAsync();
             int gpuTotalFaces = FaceCullCpuReference.CountVisibleFaces(gpuFaceMasksForVerify);
@@ -131,7 +134,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 gpuFaceMasks.View, gpuBlocks.View, gpuOutputQuads.View, gpuQuadCounter.View,
                 chunkXZ, height, paddedXZ);
 
-            // Read back results
+            // Synchronize before readback (required for browser backends)
+            await accelerator.SynchronizeAsync();
             var counterResult = await gpuQuadCounter.CopyToHostAsync();
             int gpuQuadCount = counterResult[0];
 
