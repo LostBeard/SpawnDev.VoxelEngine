@@ -153,7 +153,7 @@ namespace PlaywrightMultiTest
 
                         // start a static file server to serve the published output
                         // Fixed port so IndexedDB persists across runs (same origin = same IDB)
-                        var _port = 5451;
+                        var _port = 5452;
                         var baseUrl = $"https://localhost:{_port}/";
                         testableProject.Server = new StaticFileServer(testableProject.ProjectDetails.WwwRoot, baseUrl);
                         // start https server to serve the Blazor WASM app
@@ -166,7 +166,7 @@ namespace PlaywrightMultiTest
                         // Use persistent context so IndexedDB, localStorage, and
                         // File System Access permissions survive across test runs.
                         // This enables ShaderDebugService's debug folder persistence.
-                        var userDataDir = Path.Combine(Path.GetTempPath(), "SpawnDev.ILGPU.PlaywrightProfile");
+                        var userDataDir = Path.Combine(Path.GetTempPath(), "SpawnDev.VoxelEngine.PlaywrightProfile");
                         Directory.CreateDirectory(userDataDir);
                         LogStatus($"Launching Chromium (persistent profile: {userDataDir})...");
                         testableProject.BrowserContext = await testableProject.Playwright.Chromium.LaunchPersistentContextAsync(
@@ -415,7 +415,7 @@ namespace PlaywrightMultiTest
         /// </summary>
         private static async Task P2PSwarmTwoTabTest(IPage page1, TestableBlazorWasm blazorProj)
         {
-            var baseUrl = "https://localhost:5451";
+            var baseUrl = "https://localhost:5452";
 
             // Tab 1: Open a NEW page for coordinator (don't reuse the test runner page)
             var coordPage = await blazorProj.BrowserContext.NewPageAsync();
