@@ -65,10 +65,6 @@ namespace SpawnDev.VoxelEngine.Culling
             if (verticalDist * verticalDist > fogDistSq) return; // Above/below fog cylinder
 
             // Frustum cull: P-vertex test against 6 planes
-            // WORKAROUND: ILGPU WGSL codegen bug - 'return' inside 'for' loop transpiles
-            // as 'break' instead of 'return'. Use a flag + break + return-after-loop pattern.
-            // Tracked: Tuvok fixing in WGSLCodeGenerator.cs
-            bool culled = false;
             for (int i = 0; i < 6; i++)
             {
                 float a = frustumPlanes[i * 4 + 0];
@@ -83,12 +79,8 @@ namespace SpawnDev.VoxelEngine.Culling
 
                 // If P-vertex is outside this plane, the entire AABB is outside
                 if (a * px + b * py + c * pz + d < 0)
-                {
-                    culled = true;
-                    break; // Exit plane loop (this IS correctly transpiled as break)
-                }
+                    return; // Culled - fixed in ILGPU v4.9.2-rc.4 (return-in-loop codegen)
             }
-            if (culled) return; // Exit kernel (transpiled as if-wrapping at top level)
 
             // Survived all tests - add to visible list
             int slot = Atomic.Add(ref visibleCount[0], 1);
