@@ -1,7 +1,7 @@
 {
-  "runStart": "2026-04-13 23:49:07",
-  "lastUpdate": "2026-04-13 23:50:27",
-  "elapsed": "79s",
+  "runStart": "2026-04-13 23:45:55",
+  "lastUpdate": "2026-04-13 23:47:13",
+  "elapsed": "78s",
   "passed": 195,
   "failed": 30,
   "skipped": 0,
@@ -12,1575 +12,1575 @@
       "result": "Pass",
       "error": null,
       "durationMs": 0.1,
-      "timestamp": "23:49:07"
+      "timestamp": "23:45:55"
     },
     {
       "name": "WebGPUTests.FaceCull_SingleBlock_Exactly6Faces",
       "result": "Pass",
       "error": null,
-      "durationMs": 735.6,
-      "timestamp": "23:49:08"
+      "durationMs": 950.7,
+      "timestamp": "23:45:56"
     },
     {
       "name": "WebGPUTests.FaceCull_FlatTerrain_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 255.1,
-      "timestamp": "23:49:09"
+      "durationMs": 233.4,
+      "timestamp": "23:45:56"
     },
     {
       "name": "WebGPUTests.FaceCull_SolidCube_OnlyExteriorFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 181.5,
-      "timestamp": "23:49:09"
+      "durationMs": 215.2,
+      "timestamp": "23:45:57"
     },
     {
       "name": "WebGPUTests.FaceCull_Checkerboard_WorstCase",
       "result": "Pass",
       "error": null,
-      "durationMs": 180.8,
-      "timestamp": "23:49:09"
+      "durationMs": 187.7,
+      "timestamp": "23:45:57"
     },
     {
       "name": "WebGPUTests.FaceCull_HollowBox_InteriorFacesHidden",
       "result": "Pass",
       "error": null,
-      "durationMs": 199.1,
-      "timestamp": "23:49:09"
+      "durationMs": 183.9,
+      "timestamp": "23:45:57"
     },
     {
       "name": "WebGPUTests.FaceCull_EmptyChunk_ZeroFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 180,
-      "timestamp": "23:49:09"
+      "durationMs": 208.9,
+      "timestamp": "23:45:57"
     },
     {
       "name": "WebGPUTests.FaceMask_CameraAboveChunk_TopVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 54.8,
-      "timestamp": "23:49:10"
+      "durationMs": 58.9,
+      "timestamp": "23:45:58"
     },
     {
       "name": "WebGPUTests.FaceMask_CameraInFront_CorrectFacesVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 57.9,
-      "timestamp": "23:49:10"
+      "durationMs": 61.7,
+      "timestamp": "23:45:58"
     },
     {
       "name": "WebGPUTests.FaceMask_ReducesQuadCount",
       "result": "Pass",
       "error": null,
-      "durationMs": 35.4,
-      "timestamp": "23:49:10"
+      "durationMs": 36.6,
+      "timestamp": "23:45:58"
     },
     {
       "name": "WebGPUTests.FaceMask_CameraAtChunkCenter_AllVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 46.9,
-      "timestamp": "23:49:10"
+      "durationMs": 45.5,
+      "timestamp": "23:45:58"
     },
     {
       "name": "WebGPUTests.FrustumCull_AllInView_NothingCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 222.1,
-      "timestamp": "23:49:10"
+      "durationMs": 206,
+      "timestamp": "23:45:58"
     },
     {
       "name": "WebGPUTests.FrustumCull_BehindCamera_AllCulled",
       "result": "Fail",
       "error": "Test WebGPUTests.FrustumCull_BehindCamera_AllCulled failed with error: System.Exception: GPU: expected 0 visible behind camera, got 8\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_BehindCamera_AllCulled\u003Eb__20_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_BehindCamera_AllCulled()\n   at SpawnDev.UnitTesting.UnitT",
-      "durationMs": 198.9,
-      "timestamp": "23:49:10"
+      "durationMs": 184.1,
+      "timestamp": "23:45:58"
     },
     {
       "name": "WebGPUTests.FrustumCull_FogDistance_CullsFarChunks",
       "result": "Pass",
       "error": null,
-      "durationMs": 163.8,
-      "timestamp": "23:49:11"
+      "durationMs": 176.9,
+      "timestamp": "23:45:59"
     },
     {
       "name": "WebGPUTests.FrustumCull_MixedVisibility_MatchesCpuReference",
       "result": "Fail",
       "error": "Test WebGPUTests.FrustumCull_MixedVisibility_MatchesCpuReference failed with error: System.Exception: Visible count mismatch: CPU=3 [0,4,7], GPU=7 [0,1,2,3,4,5,7]\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_MixedVisibility_MatchesCpuReference\u003Eb__22_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_MixedVisibility",
-      "durationMs": 180.1,
-      "timestamp": "23:49:11"
+      "durationMs": 197.9,
+      "timestamp": "23:45:59"
     },
     {
       "name": "WebGPUTests.FrustumCull_ManualPlanes_KnownGood",
       "result": "Fail",
       "error": "Test WebGPUTests.FrustumCull_ManualPlanes_KnownGood failed with error: System.Exception: Visible count mismatch: CPU=[0,1,2,3], GPU=[0,1,2,3,4,5]\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_ManualPlanes_KnownGood\u003Eb__24_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_ManualPlanes_KnownGood()\n   at SpawnDev.UnitT",
-      "durationMs": 214.7,
-      "timestamp": "23:49:11"
+      "durationMs": 171.4,
+      "timestamp": "23:45:59"
     },
     {
       "name": "WebGPUTests.FrustumCull_MatrixExtraction_PointInFrustum",
       "result": "Pass",
       "error": null,
-      "durationMs": 62.6,
-      "timestamp": "23:49:12"
+      "durationMs": 48.3,
+      "timestamp": "23:45:59"
     },
     {
       "name": "WebGPUTests.GreedyMerge_SingleBlock_6Quads",
       "result": "Pass",
       "error": null,
-      "durationMs": 60.3,
-      "timestamp": "23:49:12"
+      "durationMs": 52.7,
+      "timestamp": "23:46:00"
     },
     {
       "name": "WebGPUTests.GreedyMerge_FlatTerrain_MergesTopFace",
       "result": "Pass",
       "error": null,
-      "durationMs": 61.8,
-      "timestamp": "23:49:12"
+      "durationMs": 43.5,
+      "timestamp": "23:46:00"
     },
     {
       "name": "WebGPUTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
       "result": "Pass",
       "error": null,
-      "durationMs": 40.7,
-      "timestamp": "23:49:12"
+      "durationMs": 52.7,
+      "timestamp": "23:46:00"
     },
     {
       "name": "WebGPUTests.GreedyMerge_Checkerboard_NoMergingPossible",
       "result": "Pass",
       "error": null,
-      "durationMs": 50.6,
-      "timestamp": "23:49:12"
+      "durationMs": 58.5,
+      "timestamp": "23:46:00"
     },
     {
       "name": "WebGPUTests.GreedyMerge_SolidCube_MaximalMerge",
       "result": "Pass",
       "error": null,
-      "durationMs": 47.6,
-      "timestamp": "23:49:12"
+      "durationMs": 47.7,
+      "timestamp": "23:46:00"
     },
     {
       "name": "WebGPUTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGPUTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_SingleBlock_CoverageMatchesCpu\u003Eb__32_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTest",
-      "durationMs": 447.6,
-      "timestamp": "23:49:13"
+      "durationMs": 450.3,
+      "timestamp": "23:46:00"
     },
     {
       "name": "WebGPUTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGPUTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_FlatTerrain_CoverageMatchesCpu\u003Eb__33_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTest",
-      "durationMs": 283,
-      "timestamp": "23:49:13"
+      "durationMs": 190.7,
+      "timestamp": "23:46:01"
     },
     {
       "name": "WebGPUTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGPUTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_SolidCube_CoverageMatchesCpu\u003Eb__34_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.Vo",
-      "durationMs": 331.8,
-      "timestamp": "23:49:13"
+      "durationMs": 330.5,
+      "timestamp": "23:46:01"
     },
     {
       "name": "WebGPUTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGPUTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 192)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_Checkerboard_CoverageMatchesCpu\u003Eb__35_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.Unit",
-      "durationMs": 275.2,
-      "timestamp": "23:49:14"
+      "durationMs": 203.3,
+      "timestamp": "23:46:02"
     },
     {
       "name": "WebGPUTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGPUTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 34)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_StripedTerrain_CoverageMatchesCpu\u003Eb__36_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.U",
-      "durationMs": 196.2,
-      "timestamp": "23:49:14"
+      "durationMs": 290.1,
+      "timestamp": "23:46:02"
     },
     {
       "name": "WebGPUTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGPUTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 12)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_HollowBox_CoverageMatchesCpu\u003Eb__37_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.V",
-      "durationMs": 182.7,
-      "timestamp": "23:49:15"
+      "durationMs": 290.6,
+      "timestamp": "23:46:03"
     },
     {
       "name": "WebGPUTests.GreedyMergeGpu_DamagedBlocks_MergeByType",
       "result": "Fail",
       "error": "Test WebGPUTests.GreedyMergeGpu_DamagedBlocks_MergeByType failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_DamagedBlocks_MergeByType\u003Eb__38_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEng",
-      "durationMs": 279.7,
-      "timestamp": "23:49:15"
+      "durationMs": 284.5,
+      "timestamp": "23:46:03"
     },
     {
       "name": "WebGPUTests.PackedBlock_PackUnpack_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 49.6,
-      "timestamp": "23:49:15"
+      "durationMs": 38.4,
+      "timestamp": "23:46:03"
     },
     {
       "name": "WebGPUTests.PackedQuad_SectionLocal_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 56.2,
-      "timestamp": "23:49:15"
+      "durationMs": 65.2,
+      "timestamp": "23:46:03"
     },
     {
       "name": "WebGPUTests.GreedyMerge_DamagedBlocks_MergeBySameType",
       "result": "Pass",
       "error": null,
-      "durationMs": 59.9,
-      "timestamp": "23:49:16"
+      "durationMs": 39.4,
+      "timestamp": "23:46:03"
     },
     {
       "name": "WebGPUTests.VertexPool_AllocAndFree_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 45.8,
-      "timestamp": "23:49:16"
+      "durationMs": 52.1,
+      "timestamp": "23:46:04"
     },
     {
       "name": "WebGPUTests.VertexPool_AllocMultiple_6BucketsPerChunk",
       "result": "Pass",
       "error": null,
-      "durationMs": 41.5,
-      "timestamp": "23:49:16"
+      "durationMs": 46.4,
+      "timestamp": "23:46:04"
     },
     {
       "name": "WebGPUTests.VertexPool_ExhaustAndRecover",
       "result": "Pass",
       "error": null,
-      "durationMs": 45.3,
-      "timestamp": "23:49:16"
+      "durationMs": 47.8,
+      "timestamp": "23:46:04"
     },
     {
       "name": "WebGPUTests.VertexPool_Eviction_FarthestChunkFirst",
       "result": "Pass",
       "error": null,
-      "durationMs": 49.1,
-      "timestamp": "23:49:16"
+      "durationMs": 47.2,
+      "timestamp": "23:46:04"
     },
     {
       "name": "WebGPUTests.VertexPool_EvictUntilFree_MultipleEvictions",
       "result": "Pass",
       "error": null,
-      "durationMs": 42.6,
-      "timestamp": "23:49:16"
+      "durationMs": 45.7,
+      "timestamp": "23:46:04"
     },
     {
       "name": "WebGPUTests.VertexPool_GetBucketOffset_Correct",
       "result": "Pass",
       "error": null,
-      "durationMs": 36.4,
-      "timestamp": "23:49:16"
+      "durationMs": 56,
+      "timestamp": "23:46:04"
     },
     {
       "name": "WasmTests.FaceCull_SingleBlock_Exactly6Faces",
       "result": "Pass",
       "error": null,
-      "durationMs": 213.8,
-      "timestamp": "23:49:16"
+      "durationMs": 206.7,
+      "timestamp": "23:46:04"
     },
     {
       "name": "WasmTests.FaceCull_FlatTerrain_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 181.3,
-      "timestamp": "23:49:17"
+      "durationMs": 168.9,
+      "timestamp": "23:46:04"
     },
     {
       "name": "WasmTests.FaceCull_SolidCube_OnlyExteriorFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 160.7,
-      "timestamp": "23:49:17"
+      "durationMs": 182.2,
+      "timestamp": "23:46:05"
     },
     {
       "name": "WasmTests.FaceCull_Checkerboard_WorstCase",
       "result": "Pass",
       "error": null,
-      "durationMs": 172.1,
-      "timestamp": "23:49:17"
+      "durationMs": 179.9,
+      "timestamp": "23:46:05"
     },
     {
       "name": "WasmTests.FaceCull_HollowBox_InteriorFacesHidden",
       "result": "Pass",
       "error": null,
-      "durationMs": 178.5,
-      "timestamp": "23:49:17"
+      "durationMs": 178.7,
+      "timestamp": "23:46:05"
     },
     {
       "name": "WasmTests.FaceCull_EmptyChunk_ZeroFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 205.9,
-      "timestamp": "23:49:17"
+      "durationMs": 191.9,
+      "timestamp": "23:46:05"
     },
     {
       "name": "WasmTests.FaceMask_CameraAboveChunk_TopVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 43.6,
-      "timestamp": "23:49:18"
+      "durationMs": 39.7,
+      "timestamp": "23:46:05"
     },
     {
       "name": "WasmTests.FaceMask_CameraInFront_CorrectFacesVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 44.9,
-      "timestamp": "23:49:18"
+      "durationMs": 44.4,
+      "timestamp": "23:46:06"
     },
     {
       "name": "WasmTests.FaceMask_ReducesQuadCount",
       "result": "Pass",
       "error": null,
-      "durationMs": 33.5,
-      "timestamp": "23:49:18"
+      "durationMs": 48.2,
+      "timestamp": "23:46:06"
     },
     {
       "name": "WasmTests.FaceMask_CameraAtChunkCenter_AllVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 53.2,
-      "timestamp": "23:49:18"
+      "durationMs": 43.5,
+      "timestamp": "23:46:06"
     },
     {
       "name": "WasmTests.FrustumCull_AllInView_NothingCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 186,
-      "timestamp": "23:49:18"
+      "durationMs": 204.9,
+      "timestamp": "23:46:06"
     },
     {
       "name": "WasmTests.FrustumCull_BehindCamera_AllCulled",
       "result": "Fail",
       "error": "Test WasmTests.FrustumCull_BehindCamera_AllCulled failed with error: System.Exception: GPU: expected 0 visible behind camera, got 8\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_BehindCamera_AllCulled\u003Eb__20_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_BehindCamera_AllCulled()\n   at SpawnDev.UnitTesting.UnitTes",
-      "durationMs": 175.1,
-      "timestamp": "23:49:18"
+      "durationMs": 186,
+      "timestamp": "23:46:06"
     },
     {
       "name": "WasmTests.FrustumCull_FogDistance_CullsFarChunks",
       "result": "Pass",
       "error": null,
-      "durationMs": 171.6,
-      "timestamp": "23:49:19"
+      "durationMs": 164.9,
+      "timestamp": "23:46:06"
     },
     {
       "name": "WasmTests.FrustumCull_MixedVisibility_MatchesCpuReference",
       "result": "Fail",
       "error": "Test WasmTests.FrustumCull_MixedVisibility_MatchesCpuReference failed with error: System.Exception: Visible count mismatch: CPU=3 [0,4,7], GPU=7 [0,1,2,3,4,5,7]\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_MixedVisibility_MatchesCpuReference\u003Eb__22_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_MixedVisibility_M",
-      "durationMs": 183.7,
-      "timestamp": "23:49:19"
+      "durationMs": 200.4,
+      "timestamp": "23:46:07"
     },
     {
       "name": "WasmTests.FrustumCull_ManualPlanes_KnownGood",
       "result": "Fail",
       "error": "Test WasmTests.FrustumCull_ManualPlanes_KnownGood failed with error: System.Exception: Visible count mismatch: CPU=[0,1,2,3], GPU=[0,1,2,3,4,5]\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_ManualPlanes_KnownGood\u003Eb__24_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_ManualPlanes_KnownGood()\n   at SpawnDev.UnitTes",
-      "durationMs": 205.9,
-      "timestamp": "23:49:19"
+      "durationMs": 172.4,
+      "timestamp": "23:46:07"
     },
     {
       "name": "WasmTests.FrustumCull_MatrixExtraction_PointInFrustum",
       "result": "Pass",
       "error": null,
-      "durationMs": 50.2,
-      "timestamp": "23:49:19"
+      "durationMs": 43.9,
+      "timestamp": "23:46:07"
     },
     {
       "name": "WasmTests.GreedyMerge_SingleBlock_6Quads",
       "result": "Pass",
       "error": null,
-      "durationMs": 61.8,
-      "timestamp": "23:49:20"
+      "durationMs": 39.6,
+      "timestamp": "23:46:07"
     },
     {
       "name": "WasmTests.GreedyMerge_FlatTerrain_MergesTopFace",
       "result": "Pass",
       "error": null,
-      "durationMs": 53.5,
-      "timestamp": "23:49:20"
+      "durationMs": 56,
+      "timestamp": "23:46:07"
     },
     {
       "name": "WasmTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
       "result": "Pass",
       "error": null,
-      "durationMs": 34.5,
-      "timestamp": "23:49:20"
+      "durationMs": 41.8,
+      "timestamp": "23:46:08"
     },
     {
       "name": "WasmTests.GreedyMerge_Checkerboard_NoMergingPossible",
       "result": "Pass",
       "error": null,
-      "durationMs": 43.7,
-      "timestamp": "23:49:20"
+      "durationMs": 48.2,
+      "timestamp": "23:46:08"
     },
     {
       "name": "WasmTests.GreedyMerge_SolidCube_MaximalMerge",
       "result": "Pass",
       "error": null,
-      "durationMs": 40.8,
-      "timestamp": "23:49:20"
+      "durationMs": 49.3,
+      "timestamp": "23:46:08"
     },
     {
       "name": "WasmTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WasmTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_SingleBlock_CoverageMatchesCpu\u003Eb__32_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.",
-      "durationMs": 419,
-      "timestamp": "23:49:20"
+      "durationMs": 382.7,
+      "timestamp": "23:46:08"
     },
     {
       "name": "WasmTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WasmTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_FlatTerrain_CoverageMatchesCpu\u003Eb__33_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.",
-      "durationMs": 307.9,
-      "timestamp": "23:49:21"
+      "durationMs": 195.6,
+      "timestamp": "23:46:09"
     },
     {
       "name": "WasmTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WasmTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_SolidCube_CoverageMatchesCpu\u003Eb__34_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.Voxe",
-      "durationMs": 291.2,
-      "timestamp": "23:49:21"
+      "durationMs": 183.9,
+      "timestamp": "23:46:09"
     },
     {
       "name": "WasmTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WasmTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 192)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_Checkerboard_CoverageMatchesCpu\u003Eb__35_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTe",
-      "durationMs": 282.1,
-      "timestamp": "23:49:22"
+      "durationMs": 285.7,
+      "timestamp": "23:46:09"
     },
     {
       "name": "WasmTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WasmTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 34)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_StripedTerrain_CoverageMatchesCpu\u003Eb__36_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.Uni",
-      "durationMs": 270.2,
-      "timestamp": "23:49:22"
+      "durationMs": 302.3,
+      "timestamp": "23:46:10"
     },
     {
       "name": "WasmTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WasmTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 12)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_HollowBox_CoverageMatchesCpu\u003Eb__37_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.Vox",
-      "durationMs": 196.9,
-      "timestamp": "23:49:23"
+      "durationMs": 283,
+      "timestamp": "23:46:10"
     },
     {
       "name": "WasmTests.GreedyMergeGpu_DamagedBlocks_MergeByType",
       "result": "Fail",
       "error": "Test WasmTests.GreedyMergeGpu_DamagedBlocks_MergeByType failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_DamagedBlocks_MergeByType\u003Eb__38_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngin",
-      "durationMs": 186.3,
-      "timestamp": "23:49:23"
+      "durationMs": 195.6,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.PackedBlock_PackUnpack_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 52.8,
-      "timestamp": "23:49:23"
+      "durationMs": 50.1,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.PackedQuad_SectionLocal_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 47,
-      "timestamp": "23:49:23"
+      "durationMs": 53.4,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.GreedyMerge_DamagedBlocks_MergeBySameType",
       "result": "Pass",
       "error": null,
-      "durationMs": 34.1,
-      "timestamp": "23:49:23"
+      "durationMs": 37.2,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.VertexPool_AllocAndFree_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 49.1,
-      "timestamp": "23:49:23"
+      "durationMs": 46.1,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.VertexPool_AllocMultiple_6BucketsPerChunk",
       "result": "Pass",
       "error": null,
-      "durationMs": 58.3,
-      "timestamp": "23:49:24"
+      "durationMs": 45.4,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.VertexPool_ExhaustAndRecover",
       "result": "Pass",
       "error": null,
-      "durationMs": 62.1,
-      "timestamp": "23:49:24"
+      "durationMs": 42.7,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.VertexPool_Eviction_FarthestChunkFirst",
       "result": "Pass",
       "error": null,
-      "durationMs": 41.7,
-      "timestamp": "23:49:24"
+      "durationMs": 40.8,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.VertexPool_EvictUntilFree_MultipleEvictions",
       "result": "Pass",
       "error": null,
-      "durationMs": 40.4,
-      "timestamp": "23:49:24"
+      "durationMs": 47.5,
+      "timestamp": "23:46:11"
     },
     {
       "name": "WasmTests.VertexPool_GetBucketOffset_Correct",
       "result": "Pass",
       "error": null,
-      "durationMs": 47,
-      "timestamp": "23:49:24"
+      "durationMs": 44.6,
+      "timestamp": "23:46:12"
     },
     {
       "name": "WebGLTests.FaceCull_SingleBlock_Exactly6Faces",
       "result": "Pass",
       "error": null,
-      "durationMs": 267.4,
-      "timestamp": "23:49:24"
+      "durationMs": 298.5,
+      "timestamp": "23:46:12"
     },
     {
       "name": "WebGLTests.FaceCull_FlatTerrain_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 186.3,
-      "timestamp": "23:49:24"
+      "durationMs": 180.3,
+      "timestamp": "23:46:12"
     },
     {
       "name": "WebGLTests.FaceCull_SolidCube_OnlyExteriorFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 197.2,
-      "timestamp": "23:49:25"
+      "durationMs": 180.3,
+      "timestamp": "23:46:12"
     },
     {
       "name": "WebGLTests.FaceCull_Checkerboard_WorstCase",
       "result": "Pass",
       "error": null,
-      "durationMs": 173.3,
-      "timestamp": "23:49:25"
+      "durationMs": 163.5,
+      "timestamp": "23:46:13"
     },
     {
       "name": "WebGLTests.FaceCull_HollowBox_InteriorFacesHidden",
       "result": "Pass",
       "error": null,
-      "durationMs": 178.2,
-      "timestamp": "23:49:25"
+      "durationMs": 176.8,
+      "timestamp": "23:46:13"
     },
     {
       "name": "WebGLTests.FaceCull_EmptyChunk_ZeroFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 170.5,
-      "timestamp": "23:49:25"
+      "durationMs": 184.4,
+      "timestamp": "23:46:13"
     },
     {
       "name": "WebGLTests.FaceMask_CameraAboveChunk_TopVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 43.6,
-      "timestamp": "23:49:25"
+      "durationMs": 43.9,
+      "timestamp": "23:46:13"
     },
     {
       "name": "WebGLTests.FaceMask_CameraInFront_CorrectFacesVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 52.5,
-      "timestamp": "23:49:26"
+      "durationMs": 42.5,
+      "timestamp": "23:46:13"
     },
     {
       "name": "WebGLTests.FaceMask_ReducesQuadCount",
       "result": "Pass",
       "error": null,
-      "durationMs": 38.1,
-      "timestamp": "23:49:26"
+      "durationMs": 45.1,
+      "timestamp": "23:46:13"
     },
     {
       "name": "WebGLTests.FaceMask_CameraAtChunkCenter_AllVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 53.1,
-      "timestamp": "23:49:26"
+      "durationMs": 52.4,
+      "timestamp": "23:46:13"
     },
     {
       "name": "WebGLTests.FrustumCull_AllInView_NothingCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 198.7,
-      "timestamp": "23:49:26"
+      "durationMs": 208.5,
+      "timestamp": "23:46:14"
     },
     {
       "name": "WebGLTests.FrustumCull_BehindCamera_AllCulled",
       "result": "Fail",
       "error": "Test WebGLTests.FrustumCull_BehindCamera_AllCulled failed with error: System.Exception: GPU: expected 0 visible behind camera, got 8\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_BehindCamera_AllCulled\u003Eb__20_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_BehindCamera_AllCulled()\n   at SpawnDev.UnitTesting.UnitTe",
-      "durationMs": 165,
-      "timestamp": "23:49:26"
+      "durationMs": 171.9,
+      "timestamp": "23:46:14"
     },
     {
       "name": "WebGLTests.FrustumCull_FogDistance_CullsFarChunks",
       "result": "Pass",
       "error": null,
-      "durationMs": 176.4,
-      "timestamp": "23:49:27"
+      "durationMs": 187.5,
+      "timestamp": "23:46:14"
     },
     {
       "name": "WebGLTests.FrustumCull_MixedVisibility_MatchesCpuReference",
       "result": "Fail",
       "error": "Test WebGLTests.FrustumCull_MixedVisibility_MatchesCpuReference failed with error: System.Exception: Visible count mismatch: CPU=3 [0,4,7], GPU=7 [0,1,2,3,4,5,7]\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_MixedVisibility_MatchesCpuReference\u003Eb__22_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_MixedVisibility_",
-      "durationMs": 179.2,
-      "timestamp": "23:49:27"
+      "durationMs": 164.9,
+      "timestamp": "23:46:14"
     },
     {
       "name": "WebGLTests.FrustumCull_ManualPlanes_KnownGood",
       "result": "Fail",
       "error": "Test WebGLTests.FrustumCull_ManualPlanes_KnownGood failed with error: System.Exception: Visible count mismatch: CPU=[0,1,2,3], GPU=[0,1,2,3,4,5]\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CFrustumCull_ManualPlanes_KnownGood\u003Eb__24_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.RunTest(Func\u00602 test)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.FrustumCull_ManualPlanes_KnownGood()\n   at SpawnDev.UnitTe",
-      "durationMs": 172.8,
-      "timestamp": "23:49:27"
+      "durationMs": 183.2,
+      "timestamp": "23:46:15"
     },
     {
       "name": "WebGLTests.FrustumCull_MatrixExtraction_PointInFrustum",
       "result": "Pass",
       "error": null,
-      "durationMs": 56.5,
-      "timestamp": "23:49:27"
+      "durationMs": 62.7,
+      "timestamp": "23:46:15"
     },
     {
       "name": "WebGLTests.GreedyMerge_SingleBlock_6Quads",
       "result": "Pass",
       "error": null,
-      "durationMs": 52.1,
-      "timestamp": "23:49:27"
+      "durationMs": 39.5,
+      "timestamp": "23:46:15"
     },
     {
       "name": "WebGLTests.GreedyMerge_FlatTerrain_MergesTopFace",
       "result": "Pass",
       "error": null,
-      "durationMs": 44.1,
-      "timestamp": "23:49:28"
+      "durationMs": 35.1,
+      "timestamp": "23:46:15"
     },
     {
       "name": "WebGLTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
       "result": "Pass",
       "error": null,
-      "durationMs": 43.6,
-      "timestamp": "23:49:28"
+      "durationMs": 47,
+      "timestamp": "23:46:15"
     },
     {
       "name": "WebGLTests.GreedyMerge_Checkerboard_NoMergingPossible",
       "result": "Pass",
       "error": null,
-      "durationMs": 48.9,
-      "timestamp": "23:49:28"
+      "durationMs": 55,
+      "timestamp": "23:46:15"
     },
     {
       "name": "WebGLTests.GreedyMerge_SolidCube_MaximalMerge",
       "result": "Pass",
       "error": null,
-      "durationMs": 46.2,
-      "timestamp": "23:49:28"
+      "durationMs": 48,
+      "timestamp": "23:46:15"
     },
     {
       "name": "WebGLTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGLTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_SingleBlock_CoverageMatchesCpu\u003Eb__32_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests",
-      "durationMs": 348.6,
-      "timestamp": "23:49:28"
+      "durationMs": 355.6,
+      "timestamp": "23:46:16"
     },
     {
       "name": "WebGLTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGLTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_FlatTerrain_CoverageMatchesCpu\u003Eb__33_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests",
-      "durationMs": 295.1,
-      "timestamp": "23:49:29"
+      "durationMs": 304.5,
+      "timestamp": "23:46:16"
     },
     {
       "name": "WebGLTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGLTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_SolidCube_CoverageMatchesCpu\u003Eb__34_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.Vox",
-      "durationMs": 174.5,
-      "timestamp": "23:49:29"
+      "durationMs": 286,
+      "timestamp": "23:46:17"
     },
     {
       "name": "WebGLTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGLTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 192)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_Checkerboard_CoverageMatchesCpu\u003Eb__35_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitT",
-      "durationMs": 284.4,
-      "timestamp": "23:49:30"
+      "durationMs": 286.7,
+      "timestamp": "23:46:17"
     },
     {
       "name": "WebGLTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGLTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 34)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_StripedTerrain_CoverageMatchesCpu\u003Eb__36_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.Un",
-      "durationMs": 189.1,
-      "timestamp": "23:49:30"
+      "durationMs": 282,
+      "timestamp": "23:46:18"
     },
     {
       "name": "WebGLTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu",
       "result": "Fail",
       "error": "Test WebGLTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu failed with error: System.Exception: GPU produced 0 quads (CPU produced 12)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_HollowBox_CoverageMatchesCpu\u003Eb__37_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.Vo",
-      "durationMs": 302.4,
-      "timestamp": "23:49:30"
+      "durationMs": 278.4,
+      "timestamp": "23:46:18"
     },
     {
       "name": "WebGLTests.GreedyMergeGpu_DamagedBlocks_MergeByType",
       "result": "Fail",
       "error": "Test WebGLTests.GreedyMergeGpu_DamagedBlocks_MergeByType failed with error: System.Exception: GPU produced 0 quads (CPU produced 6)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.VerifyGpuGreedyMerge(Accelerator accelerator, Int32[] paddedBlocks, Int32 chunkXZ, Int32 height)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngineTestBase.\u003CGreedyMergeGpu_DamagedBlocks_MergeByType\u003Eb__38_0(Accelerator accelerator)\n   at SpawnDev.VoxelEngine.Demo.Shared.UnitTests.VoxelEngi",
-      "durationMs": 180.6,
-      "timestamp": "23:49:31"
+      "durationMs": 182.9,
+      "timestamp": "23:46:18"
     },
     {
       "name": "WebGLTests.PackedBlock_PackUnpack_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 53.1,
-      "timestamp": "23:49:31"
+      "durationMs": 44.2,
+      "timestamp": "23:46:19"
     },
     {
       "name": "WebGLTests.PackedQuad_SectionLocal_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 59.8,
-      "timestamp": "23:49:31"
+      "durationMs": 48.4,
+      "timestamp": "23:46:19"
     },
     {
       "name": "WebGLTests.GreedyMerge_DamagedBlocks_MergeBySameType",
       "result": "Pass",
       "error": null,
-      "durationMs": 53.1,
-      "timestamp": "23:49:31"
+      "durationMs": 42.2,
+      "timestamp": "23:46:19"
     },
     {
       "name": "WebGLTests.VertexPool_AllocAndFree_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 38.7,
-      "timestamp": "23:49:31"
+      "durationMs": 49,
+      "timestamp": "23:46:19"
     },
     {
       "name": "WebGLTests.VertexPool_AllocMultiple_6BucketsPerChunk",
       "result": "Pass",
       "error": null,
-      "durationMs": 43,
-      "timestamp": "23:49:31"
+      "durationMs": 50.2,
+      "timestamp": "23:46:19"
     },
     {
       "name": "WebGLTests.VertexPool_ExhaustAndRecover",
       "result": "Pass",
       "error": null,
-      "durationMs": 54.1,
-      "timestamp": "23:49:31"
+      "durationMs": 55.4,
+      "timestamp": "23:46:19"
     },
     {
       "name": "WebGLTests.VertexPool_Eviction_FarthestChunkFirst",
       "result": "Pass",
       "error": null,
-      "durationMs": 47.9,
-      "timestamp": "23:49:32"
+      "durationMs": 37.6,
+      "timestamp": "23:46:19"
     },
     {
       "name": "WebGLTests.VertexPool_EvictUntilFree_MultipleEvictions",
       "result": "Pass",
       "error": null,
-      "durationMs": 45,
-      "timestamp": "23:49:32"
+      "durationMs": 46.1,
+      "timestamp": "23:46:19"
     },
     {
       "name": "WebGLTests.VertexPool_GetBucketOffset_Correct",
       "result": "Pass",
       "error": null,
-      "durationMs": 48.1,
-      "timestamp": "23:49:32"
+      "durationMs": 48.3,
+      "timestamp": "23:46:19"
     },
     {
       "name": "DefaultTests.VoxelEngineLoads",
       "result": "Pass",
       "error": null,
-      "durationMs": 154,
-      "timestamp": "23:49:32"
+      "durationMs": 155.6,
+      "timestamp": "23:46:20"
     },
     {
       "name": "Build SpawnDev.VoxelEngine.DemoConsole",
       "result": "Pass",
       "error": null,
       "durationMs": 0,
-      "timestamp": "23:49:32"
+      "timestamp": "23:46:20"
     },
     {
       "name": "CPUTests.FaceCull_SingleBlock_Exactly6Faces",
       "result": "Pass",
       "error": null,
-      "durationMs": 830,
-      "timestamp": "23:49:33"
+      "durationMs": 802.6,
+      "timestamp": "23:46:20"
     },
     {
       "name": "CPUTests.FaceCull_FlatTerrain_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 564.9,
-      "timestamp": "23:49:33"
+      "durationMs": 543.8,
+      "timestamp": "23:46:21"
     },
     {
       "name": "CPUTests.FaceCull_SolidCube_OnlyExteriorFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 536.5,
-      "timestamp": "23:49:34"
+      "durationMs": 542.5,
+      "timestamp": "23:46:22"
     },
     {
       "name": "CPUTests.FaceCull_Checkerboard_WorstCase",
       "result": "Pass",
       "error": null,
-      "durationMs": 542.4,
-      "timestamp": "23:49:35"
+      "durationMs": 526.6,
+      "timestamp": "23:46:22"
     },
     {
       "name": "CPUTests.FaceCull_HollowBox_InteriorFacesHidden",
       "result": "Pass",
       "error": null,
-      "durationMs": 557.2,
-      "timestamp": "23:49:35"
+      "durationMs": 521.8,
+      "timestamp": "23:46:23"
     },
     {
       "name": "CPUTests.FaceCull_EmptyChunk_ZeroFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 556.8,
-      "timestamp": "23:49:36"
+      "durationMs": 521.7,
+      "timestamp": "23:46:23"
     },
     {
       "name": "CPUTests.FaceMask_CameraAboveChunk_TopVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 359.3,
-      "timestamp": "23:49:36"
+      "durationMs": 340.4,
+      "timestamp": "23:46:24"
     },
     {
       "name": "CPUTests.FaceMask_CameraInFront_CorrectFacesVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 362.4,
-      "timestamp": "23:49:37"
+      "durationMs": 344.9,
+      "timestamp": "23:46:24"
     },
     {
       "name": "CPUTests.FaceMask_ReducesQuadCount",
       "result": "Pass",
       "error": null,
-      "durationMs": 357.1,
-      "timestamp": "23:49:37"
+      "durationMs": 341.2,
+      "timestamp": "23:46:24"
     },
     {
       "name": "CPUTests.FaceMask_CameraAtChunkCenter_AllVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 364.4,
-      "timestamp": "23:49:37"
+      "durationMs": 349.5,
+      "timestamp": "23:46:25"
     },
     {
       "name": "CPUTests.FrustumCull_AllInView_NothingCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 554.7,
-      "timestamp": "23:49:38"
+      "durationMs": 534,
+      "timestamp": "23:46:25"
     },
     {
       "name": "CPUTests.FrustumCull_BehindCamera_AllCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 536.7,
-      "timestamp": "23:49:38"
+      "durationMs": 529.4,
+      "timestamp": "23:46:26"
     },
     {
       "name": "CPUTests.FrustumCull_FogDistance_CullsFarChunks",
       "result": "Pass",
       "error": null,
-      "durationMs": 530.2,
-      "timestamp": "23:49:39"
+      "durationMs": 523.1,
+      "timestamp": "23:46:27"
     },
     {
       "name": "CPUTests.FrustumCull_MixedVisibility_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 533.2,
-      "timestamp": "23:49:40"
+      "durationMs": 522.6,
+      "timestamp": "23:46:27"
     },
     {
       "name": "CPUTests.FrustumCull_ManualPlanes_KnownGood",
       "result": "Pass",
       "error": null,
-      "durationMs": 542.6,
-      "timestamp": "23:49:40"
+      "durationMs": 542.1,
+      "timestamp": "23:46:28"
     },
     {
       "name": "CPUTests.FrustumCull_MatrixExtraction_PointInFrustum",
       "result": "Pass",
       "error": null,
-      "durationMs": 361.6,
-      "timestamp": "23:49:41"
+      "durationMs": 352.3,
+      "timestamp": "23:46:28"
     },
     {
       "name": "CPUTests.GreedyMerge_SingleBlock_6Quads",
       "result": "Pass",
       "error": null,
-      "durationMs": 363.2,
-      "timestamp": "23:49:41"
+      "durationMs": 351.3,
+      "timestamp": "23:46:28"
     },
     {
       "name": "CPUTests.GreedyMerge_FlatTerrain_MergesTopFace",
       "result": "Pass",
       "error": null,
-      "durationMs": 365.2,
-      "timestamp": "23:49:41"
+      "durationMs": 338.1,
+      "timestamp": "23:46:29"
     },
     {
       "name": "CPUTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
       "result": "Pass",
       "error": null,
-      "durationMs": 357.6,
-      "timestamp": "23:49:42"
+      "durationMs": 346.2,
+      "timestamp": "23:46:29"
     },
     {
       "name": "CPUTests.GreedyMerge_Checkerboard_NoMergingPossible",
       "result": "Pass",
       "error": null,
-      "durationMs": 371.8,
-      "timestamp": "23:49:42"
+      "durationMs": 345.7,
+      "timestamp": "23:46:30"
     },
     {
       "name": "CPUTests.GreedyMerge_SolidCube_MaximalMerge",
       "result": "Pass",
       "error": null,
-      "durationMs": 355.2,
-      "timestamp": "23:49:43"
+      "durationMs": 343,
+      "timestamp": "23:46:30"
     },
     {
       "name": "CPUTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 576.4,
-      "timestamp": "23:49:43"
+      "durationMs": 549,
+      "timestamp": "23:46:31"
     },
     {
       "name": "CPUTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 564.6,
-      "timestamp": "23:49:44"
+      "durationMs": 551.7,
+      "timestamp": "23:46:31"
     },
     {
       "name": "CPUTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 571.7,
-      "timestamp": "23:49:44"
+      "durationMs": 564.2,
+      "timestamp": "23:46:32"
     },
     {
       "name": "CPUTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 575.1,
-      "timestamp": "23:49:45"
+      "durationMs": 561.9,
+      "timestamp": "23:46:32"
     },
     {
       "name": "CPUTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 563.2,
-      "timestamp": "23:49:46"
+      "durationMs": 564.2,
+      "timestamp": "23:46:33"
     },
     {
       "name": "CPUTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 563.1,
-      "timestamp": "23:49:46"
+      "durationMs": 564.3,
+      "timestamp": "23:46:34"
     },
     {
       "name": "CPUTests.GreedyMergeGpu_DamagedBlocks_MergeByType",
       "result": "Pass",
       "error": null,
-      "durationMs": 579.5,
-      "timestamp": "23:49:47"
+      "durationMs": 563.8,
+      "timestamp": "23:46:34"
     },
     {
       "name": "CPUTests.PackedBlock_PackUnpack_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 356.4,
-      "timestamp": "23:49:47"
+      "durationMs": 349,
+      "timestamp": "23:46:34"
     },
     {
       "name": "CPUTests.PackedQuad_SectionLocal_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 360.5,
-      "timestamp": "23:49:48"
+      "durationMs": 346.6,
+      "timestamp": "23:46:35"
     },
     {
       "name": "CPUTests.GreedyMerge_DamagedBlocks_MergeBySameType",
       "result": "Pass",
       "error": null,
-      "durationMs": 369.7,
-      "timestamp": "23:49:48"
+      "durationMs": 343.7,
+      "timestamp": "23:46:35"
     },
     {
       "name": "CPUTests.VertexPool_AllocAndFree_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 370.8,
-      "timestamp": "23:49:48"
+      "durationMs": 348.3,
+      "timestamp": "23:46:36"
     },
     {
       "name": "CPUTests.VertexPool_AllocMultiple_6BucketsPerChunk",
       "result": "Pass",
       "error": null,
-      "durationMs": 359.5,
-      "timestamp": "23:49:49"
+      "durationMs": 351.5,
+      "timestamp": "23:46:36"
     },
     {
       "name": "CPUTests.VertexPool_ExhaustAndRecover",
       "result": "Pass",
       "error": null,
-      "durationMs": 372.6,
-      "timestamp": "23:49:49"
+      "durationMs": 360,
+      "timestamp": "23:46:36"
     },
     {
       "name": "CPUTests.VertexPool_Eviction_FarthestChunkFirst",
       "result": "Pass",
       "error": null,
-      "durationMs": 364.8,
-      "timestamp": "23:49:50"
+      "durationMs": 352.3,
+      "timestamp": "23:46:37"
     },
     {
       "name": "CPUTests.VertexPool_EvictUntilFree_MultipleEvictions",
       "result": "Pass",
       "error": null,
-      "durationMs": 354.1,
-      "timestamp": "23:49:50"
+      "durationMs": 359.6,
+      "timestamp": "23:46:37"
     },
     {
       "name": "CPUTests.VertexPool_GetBucketOffset_Correct",
       "result": "Pass",
       "error": null,
-      "durationMs": 348.2,
-      "timestamp": "23:49:50"
+      "durationMs": 338.2,
+      "timestamp": "23:46:38"
     },
     {
       "name": "CudaTests.FaceCull_SingleBlock_Exactly6Faces",
       "result": "Pass",
       "error": null,
-      "durationMs": 547.3,
-      "timestamp": "23:49:51"
+      "durationMs": 526.8,
+      "timestamp": "23:46:38"
     },
     {
       "name": "CudaTests.FaceCull_FlatTerrain_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 531.8,
-      "timestamp": "23:49:52"
+      "durationMs": 517.9,
+      "timestamp": "23:46:39"
     },
     {
       "name": "CudaTests.FaceCull_SolidCube_OnlyExteriorFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 534.9,
-      "timestamp": "23:49:52"
+      "durationMs": 524,
+      "timestamp": "23:46:39"
     },
     {
       "name": "CudaTests.FaceCull_Checkerboard_WorstCase",
       "result": "Pass",
       "error": null,
-      "durationMs": 543.5,
-      "timestamp": "23:49:53"
+      "durationMs": 524.7,
+      "timestamp": "23:46:40"
     },
     {
       "name": "CudaTests.FaceCull_HollowBox_InteriorFacesHidden",
       "result": "Pass",
       "error": null,
-      "durationMs": 550.6,
-      "timestamp": "23:49:53"
+      "durationMs": 531.1,
+      "timestamp": "23:46:40"
     },
     {
       "name": "CudaTests.FaceCull_EmptyChunk_ZeroFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 530.5,
-      "timestamp": "23:49:54"
+      "durationMs": 526.8,
+      "timestamp": "23:46:41"
     },
     {
       "name": "CudaTests.FaceMask_CameraAboveChunk_TopVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 356.5,
-      "timestamp": "23:49:54"
+      "durationMs": 378.3,
+      "timestamp": "23:46:41"
     },
     {
       "name": "CudaTests.FaceMask_CameraInFront_CorrectFacesVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 350.5,
-      "timestamp": "23:49:55"
+      "durationMs": 346.4,
+      "timestamp": "23:46:42"
     },
     {
       "name": "CudaTests.FaceMask_ReducesQuadCount",
       "result": "Pass",
       "error": null,
-      "durationMs": 375.4,
-      "timestamp": "23:49:55"
+      "durationMs": 362.9,
+      "timestamp": "23:46:42"
     },
     {
       "name": "CudaTests.FaceMask_CameraAtChunkCenter_AllVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 354.7,
-      "timestamp": "23:49:56"
+      "durationMs": 348.6,
+      "timestamp": "23:46:43"
     },
     {
       "name": "CudaTests.FrustumCull_AllInView_NothingCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 539.7,
-      "timestamp": "23:49:56"
+      "durationMs": 532.7,
+      "timestamp": "23:46:43"
     },
     {
       "name": "CudaTests.FrustumCull_BehindCamera_AllCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 546,
-      "timestamp": "23:49:57"
+      "durationMs": 527.7,
+      "timestamp": "23:46:44"
     },
     {
       "name": "CudaTests.FrustumCull_FogDistance_CullsFarChunks",
       "result": "Pass",
       "error": null,
-      "durationMs": 545,
-      "timestamp": "23:49:57"
+      "durationMs": 525.3,
+      "timestamp": "23:46:44"
     },
     {
       "name": "CudaTests.FrustumCull_MixedVisibility_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 536.6,
-      "timestamp": "23:49:58"
+      "durationMs": 530.8,
+      "timestamp": "23:46:45"
     },
     {
       "name": "CudaTests.FrustumCull_ManualPlanes_KnownGood",
       "result": "Pass",
       "error": null,
-      "durationMs": 538.8,
-      "timestamp": "23:49:58"
+      "durationMs": 546.7,
+      "timestamp": "23:46:45"
     },
     {
       "name": "CudaTests.FrustumCull_MatrixExtraction_PointInFrustum",
       "result": "Pass",
       "error": null,
-      "durationMs": 351.8,
-      "timestamp": "23:49:59"
+      "durationMs": 353.6,
+      "timestamp": "23:46:46"
     },
     {
       "name": "CudaTests.GreedyMerge_SingleBlock_6Quads",
       "result": "Pass",
       "error": null,
-      "durationMs": 359.9,
-      "timestamp": "23:49:59"
+      "durationMs": 342.3,
+      "timestamp": "23:46:46"
     },
     {
       "name": "CudaTests.GreedyMerge_FlatTerrain_MergesTopFace",
       "result": "Pass",
       "error": null,
-      "durationMs": 363.2,
-      "timestamp": "23:50:00"
+      "durationMs": 351,
+      "timestamp": "23:46:47"
     },
     {
       "name": "CudaTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
       "result": "Pass",
       "error": null,
-      "durationMs": 350,
-      "timestamp": "23:50:00"
+      "durationMs": 361.9,
+      "timestamp": "23:46:47"
     },
     {
       "name": "CudaTests.GreedyMerge_Checkerboard_NoMergingPossible",
       "result": "Pass",
       "error": null,
-      "durationMs": 354.9,
-      "timestamp": "23:50:00"
+      "durationMs": 353.9,
+      "timestamp": "23:46:47"
     },
     {
       "name": "CudaTests.GreedyMerge_SolidCube_MaximalMerge",
       "result": "Pass",
       "error": null,
-      "durationMs": 355.8,
-      "timestamp": "23:50:01"
+      "durationMs": 344,
+      "timestamp": "23:46:48"
     },
     {
       "name": "CudaTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 569.7,
-      "timestamp": "23:50:01"
+      "durationMs": 548.7,
+      "timestamp": "23:46:48"
     },
     {
       "name": "CudaTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 569.3,
-      "timestamp": "23:50:02"
+      "durationMs": 553.7,
+      "timestamp": "23:46:49"
     },
     {
       "name": "CudaTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 556,
-      "timestamp": "23:50:03"
+      "durationMs": 558.9,
+      "timestamp": "23:46:49"
     },
     {
       "name": "CudaTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 564.5,
-      "timestamp": "23:50:03"
+      "durationMs": 562.5,
+      "timestamp": "23:46:50"
     },
     {
       "name": "CudaTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 561,
-      "timestamp": "23:50:04"
+      "durationMs": 565.1,
+      "timestamp": "23:46:51"
     },
     {
       "name": "CudaTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 565.2,
-      "timestamp": "23:50:04"
+      "durationMs": 555.2,
+      "timestamp": "23:46:51"
     },
     {
       "name": "CudaTests.GreedyMergeGpu_DamagedBlocks_MergeByType",
       "result": "Pass",
       "error": null,
-      "durationMs": 571.1,
-      "timestamp": "23:50:05"
+      "durationMs": 570.9,
+      "timestamp": "23:46:52"
     },
     {
       "name": "CudaTests.PackedBlock_PackUnpack_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 361.3,
-      "timestamp": "23:50:05"
+      "durationMs": 347.2,
+      "timestamp": "23:46:52"
     },
     {
       "name": "CudaTests.PackedQuad_SectionLocal_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 355.2,
-      "timestamp": "23:50:06"
+      "durationMs": 340.4,
+      "timestamp": "23:46:53"
     },
     {
       "name": "CudaTests.GreedyMerge_DamagedBlocks_MergeBySameType",
       "result": "Pass",
       "error": null,
-      "durationMs": 370.4,
-      "timestamp": "23:50:06"
+      "durationMs": 364.5,
+      "timestamp": "23:46:53"
     },
     {
       "name": "CudaTests.VertexPool_AllocAndFree_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 352.1,
-      "timestamp": "23:50:07"
+      "durationMs": 342.3,
+      "timestamp": "23:46:53"
     },
     {
       "name": "CudaTests.VertexPool_AllocMultiple_6BucketsPerChunk",
       "result": "Pass",
       "error": null,
-      "durationMs": 366.2,
-      "timestamp": "23:50:07"
+      "durationMs": 350.1,
+      "timestamp": "23:46:54"
     },
     {
       "name": "CudaTests.VertexPool_ExhaustAndRecover",
       "result": "Pass",
       "error": null,
-      "durationMs": 361.2,
-      "timestamp": "23:50:07"
+      "durationMs": 352.4,
+      "timestamp": "23:46:54"
     },
     {
       "name": "CudaTests.VertexPool_Eviction_FarthestChunkFirst",
       "result": "Pass",
       "error": null,
-      "durationMs": 366.6,
-      "timestamp": "23:50:08"
+      "durationMs": 343.1,
+      "timestamp": "23:46:55"
     },
     {
       "name": "CudaTests.VertexPool_EvictUntilFree_MultipleEvictions",
       "result": "Pass",
       "error": null,
-      "durationMs": 353.8,
-      "timestamp": "23:50:08"
+      "durationMs": 353.3,
+      "timestamp": "23:46:55"
     },
     {
       "name": "CudaTests.VertexPool_GetBucketOffset_Correct",
       "result": "Pass",
       "error": null,
-      "durationMs": 372.9,
-      "timestamp": "23:50:09"
+      "durationMs": 342.8,
+      "timestamp": "23:46:55"
     },
     {
       "name": "OpenCLTests.FaceCull_SingleBlock_Exactly6Faces",
       "result": "Pass",
       "error": null,
-      "durationMs": 538.8,
-      "timestamp": "23:50:09"
+      "durationMs": 525.8,
+      "timestamp": "23:46:56"
     },
     {
       "name": "OpenCLTests.FaceCull_FlatTerrain_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 542.6,
-      "timestamp": "23:50:10"
+      "durationMs": 523.6,
+      "timestamp": "23:46:56"
     },
     {
       "name": "OpenCLTests.FaceCull_SolidCube_OnlyExteriorFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 527.2,
-      "timestamp": "23:50:10"
+      "durationMs": 541,
+      "timestamp": "23:46:57"
     },
     {
       "name": "OpenCLTests.FaceCull_Checkerboard_WorstCase",
       "result": "Pass",
       "error": null,
-      "durationMs": 543.6,
-      "timestamp": "23:50:11"
+      "durationMs": 522.7,
+      "timestamp": "23:46:58"
     },
     {
       "name": "OpenCLTests.FaceCull_HollowBox_InteriorFacesHidden",
       "result": "Pass",
       "error": null,
-      "durationMs": 527.2,
-      "timestamp": "23:50:11"
+      "durationMs": 540,
+      "timestamp": "23:46:58"
     },
     {
       "name": "OpenCLTests.FaceCull_EmptyChunk_ZeroFaces",
       "result": "Pass",
       "error": null,
-      "durationMs": 536.6,
-      "timestamp": "23:50:12"
+      "durationMs": 523.4,
+      "timestamp": "23:46:59"
     },
     {
       "name": "OpenCLTests.FaceMask_CameraAboveChunk_TopVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 355.2,
-      "timestamp": "23:50:12"
+      "durationMs": 355.8,
+      "timestamp": "23:46:59"
     },
     {
       "name": "OpenCLTests.FaceMask_CameraInFront_CorrectFacesVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 355.4,
-      "timestamp": "23:50:13"
+      "durationMs": 353.8,
+      "timestamp": "23:47:00"
     },
     {
       "name": "OpenCLTests.FaceMask_ReducesQuadCount",
       "result": "Pass",
       "error": null,
-      "durationMs": 350.9,
-      "timestamp": "23:50:13"
+      "durationMs": 352.6,
+      "timestamp": "23:47:00"
     },
     {
       "name": "OpenCLTests.FaceMask_CameraAtChunkCenter_AllVisible",
       "result": "Pass",
       "error": null,
-      "durationMs": 354.4,
-      "timestamp": "23:50:14"
+      "durationMs": 352.2,
+      "timestamp": "23:47:00"
     },
     {
       "name": "OpenCLTests.FrustumCull_AllInView_NothingCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 551.7,
-      "timestamp": "23:50:14"
+      "durationMs": 521.9,
+      "timestamp": "23:47:01"
     },
     {
       "name": "OpenCLTests.FrustumCull_BehindCamera_AllCulled",
       "result": "Pass",
       "error": null,
-      "durationMs": 537.9,
-      "timestamp": "23:50:15"
+      "durationMs": 520.2,
+      "timestamp": "23:47:01"
     },
     {
       "name": "OpenCLTests.FrustumCull_FogDistance_CullsFarChunks",
       "result": "Pass",
       "error": null,
-      "durationMs": 539.7,
-      "timestamp": "23:50:15"
+      "durationMs": 524.4,
+      "timestamp": "23:47:02"
     },
     {
       "name": "OpenCLTests.FrustumCull_MixedVisibility_MatchesCpuReference",
       "result": "Pass",
       "error": null,
-      "durationMs": 526.7,
-      "timestamp": "23:50:16"
+      "durationMs": 526.1,
+      "timestamp": "23:47:03"
     },
     {
       "name": "OpenCLTests.FrustumCull_ManualPlanes_KnownGood",
       "result": "Pass",
       "error": null,
-      "durationMs": 534.8,
-      "timestamp": "23:50:16"
+      "durationMs": 525.8,
+      "timestamp": "23:47:03"
     },
     {
       "name": "OpenCLTests.FrustumCull_MatrixExtraction_PointInFrustum",
       "result": "Pass",
       "error": null,
-      "durationMs": 355.7,
-      "timestamp": "23:50:17"
+      "durationMs": 345.5,
+      "timestamp": "23:47:03"
     },
     {
       "name": "OpenCLTests.GreedyMerge_SingleBlock_6Quads",
       "result": "Pass",
       "error": null,
-      "durationMs": 362.1,
-      "timestamp": "23:50:17"
+      "durationMs": 341.7,
+      "timestamp": "23:47:04"
     },
     {
       "name": "OpenCLTests.GreedyMerge_FlatTerrain_MergesTopFace",
       "result": "Pass",
       "error": null,
-      "durationMs": 348.9,
-      "timestamp": "23:50:18"
+      "durationMs": 346.6,
+      "timestamp": "23:47:04"
     },
     {
       "name": "OpenCLTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
       "result": "Pass",
       "error": null,
-      "durationMs": 357.8,
-      "timestamp": "23:50:18"
+      "durationMs": 359.6,
+      "timestamp": "23:47:05"
     },
     {
       "name": "OpenCLTests.GreedyMerge_Checkerboard_NoMergingPossible",
       "result": "Pass",
       "error": null,
-      "durationMs": 345,
-      "timestamp": "23:50:18"
+      "durationMs": 342.9,
+      "timestamp": "23:47:05"
     },
     {
       "name": "OpenCLTests.GreedyMerge_SolidCube_MaximalMerge",
       "result": "Pass",
       "error": null,
-      "durationMs": 355.1,
-      "timestamp": "23:50:19"
+      "durationMs": 358.4,
+      "timestamp": "23:47:05"
     },
     {
       "name": "OpenCLTests.GreedyMergeGpu_SingleBlock_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 586.6,
-      "timestamp": "23:50:19"
+      "durationMs": 567.2,
+      "timestamp": "23:47:06"
     },
     {
       "name": "OpenCLTests.GreedyMergeGpu_FlatTerrain_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 567.7,
-      "timestamp": "23:50:20"
+      "durationMs": 562.7,
+      "timestamp": "23:47:07"
     },
     {
       "name": "OpenCLTests.GreedyMergeGpu_SolidCube_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 561.3,
-      "timestamp": "23:50:21"
+      "durationMs": 562.4,
+      "timestamp": "23:47:07"
     },
     {
       "name": "OpenCLTests.GreedyMergeGpu_Checkerboard_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 562.6,
-      "timestamp": "23:50:21"
+      "durationMs": 566.1,
+      "timestamp": "23:47:08"
     },
     {
       "name": "OpenCLTests.GreedyMergeGpu_StripedTerrain_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 584.2,
-      "timestamp": "23:50:22"
+      "durationMs": 562.8,
+      "timestamp": "23:47:08"
     },
     {
       "name": "OpenCLTests.GreedyMergeGpu_HollowBox_CoverageMatchesCpu",
       "result": "Pass",
       "error": null,
-      "durationMs": 565.3,
-      "timestamp": "23:50:22"
+      "durationMs": 563.4,
+      "timestamp": "23:47:09"
     },
     {
       "name": "OpenCLTests.GreedyMergeGpu_DamagedBlocks_MergeByType",
       "result": "Pass",
       "error": null,
-      "durationMs": 561.4,
-      "timestamp": "23:50:23"
+      "durationMs": 566.1,
+      "timestamp": "23:47:10"
     },
     {
       "name": "OpenCLTests.PackedBlock_PackUnpack_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 354.4,
-      "timestamp": "23:50:23"
+      "durationMs": 353.3,
+      "timestamp": "23:47:10"
     },
     {
       "name": "OpenCLTests.PackedQuad_SectionLocal_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 362.2,
-      "timestamp": "23:50:24"
+      "durationMs": 361.2,
+      "timestamp": "23:47:10"
     },
     {
       "name": "OpenCLTests.GreedyMerge_DamagedBlocks_MergeBySameType",
       "result": "Pass",
       "error": null,
-      "durationMs": 367.5,
-      "timestamp": "23:50:24"
+      "durationMs": 360.8,
+      "timestamp": "23:47:11"
     },
     {
       "name": "OpenCLTests.VertexPool_AllocAndFree_Roundtrip",
       "result": "Pass",
       "error": null,
-      "durationMs": 359.8,
-      "timestamp": "23:50:25"
+      "durationMs": 360.5,
+      "timestamp": "23:47:11"
     },
     {
       "name": "OpenCLTests.VertexPool_AllocMultiple_6BucketsPerChunk",
       "result": "Pass",
       "error": null,
-      "durationMs": 352.2,
-      "timestamp": "23:50:25"
+      "durationMs": 344.7,
+      "timestamp": "23:47:12"
     },
     {
       "name": "OpenCLTests.VertexPool_ExhaustAndRecover",
       "result": "Pass",
       "error": null,
-      "durationMs": 356.6,
-      "timestamp": "23:50:25"
+      "durationMs": 344.1,
+      "timestamp": "23:47:12"
     },
     {
       "name": "OpenCLTests.VertexPool_Eviction_FarthestChunkFirst",
       "result": "Pass",
       "error": null,
-      "durationMs": 369,
-      "timestamp": "23:50:26"
+      "durationMs": 345.3,
+      "timestamp": "23:47:12"
     },
     {
       "name": "OpenCLTests.VertexPool_EvictUntilFree_MultipleEvictions",
       "result": "Pass",
       "error": null,
-      "durationMs": 352.9,
-      "timestamp": "23:50:26"
+      "durationMs": 341.8,
+      "timestamp": "23:47:13"
     },
     {
       "name": "OpenCLTests.VertexPool_GetBucketOffset_Correct",
       "result": "Pass",
       "error": null,
-      "durationMs": 353.8,
-      "timestamp": "23:50:27"
+      "durationMs": 347.2,
+      "timestamp": "23:47:13"
     }
   ]
 }
