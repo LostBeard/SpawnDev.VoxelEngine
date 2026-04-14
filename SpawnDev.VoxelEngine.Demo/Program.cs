@@ -17,6 +17,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 // BlazorJS services
 builder.Services.AddBlazorJSRuntime();
+builder.Services.AddSingleton<SpawnDev.ILGPU.Services.ShaderDebugService>();
 
 // Register test classes (one per backend)
 builder.Services.AddSingleton<WebGPUTests>();
