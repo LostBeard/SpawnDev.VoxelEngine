@@ -42,6 +42,8 @@ Key changes from initial draft:
 | **Chunk height = kernel param** | Lambda capture makes it compile-time inlined. Zero overhead. |
 | **i32 atomics only on WebGPU** | i64 emulated as vec2<u32>, atomics fall back to non-atomic stores |
 | **Per-XZ-column dispatch for +Y/-Y merge** | One thread owns entire column, iterates Y internally. No race. |
+| **Voxel physics IN the engine** | Ray-voxel DDA, AABB collision, sphere query, structural integrity - all operate on PackedBlock data. Game-specific physics (player controller, vehicles) stays in consuming projects. |
+| **DDA raycaster as ILGPU kernel** | Same algorithm Teardown uses. GPU-accelerated on Quest 3S. Serves rendering, targeting, LOS, projectiles, lighting. |
 | **Transparency = reverse draw order** | Same RadixSort keys, iterate backward. One sort, two passes. |
 | **PBR textures (diffuse + normal + roughness)** | Lost Spawns = HD realistic (DayZ style). Texture array with 3 layers per block type per face. |
 | **4 texture variants per block type** | Deterministic hash(blockPos) breaks visual monotony. Stone/grass don't look identical everywhere. |
@@ -200,7 +202,27 @@ let baseLayer = blockType * textureLayersPerType + variant * 3u; // *3 for diffu
 - Only build if benchmarks show a need
 - Conditional file: `Buffers/StreamingUploadBuffer.cs`
 
-### Sprint 3: Rendering Foundation (Phase 3)
+**2.6 Voxel Raycaster (DDA Traversal) - FOUNDATIONAL**
+- GPU kernel: fast ray-voxel intersection using DDA (Digital Differential Analyzer)
+- Same algorithm Teardown uses for its entire renderer
+- Input: ray origin + direction, block grid (section data)
+- Output: hit position, hit face, block type, distance
+- Serves: block targeting (crosshair), line of sight, projectile hits, light rays, debug X-ray
+- Both games need this from day one
+- Uses PackedBlock masking (& 0xFFF) for transparent block pass-through
+- Configurable: max distance, block filter (solid only, all non-air, custom predicate via DelegateSpecialization)
+- New file: `Physics/VoxelRaycast.cs`
+- CPU reference: `Physics/VoxelRaycastCpuReference.cs`
+- Tests:
+  - Ray hitting single block: correct hit position and face
+  - Ray through empty space: no hit within max distance
+  - Ray through transparent block: passes through, hits solid behind
+  - Ray along exact axis: hits correct face (edge case: axis-aligned rays)
+  - Ray at chunk/section boundary: correct cross-section traversal
+  - GPU vs CPU reference: exact match for all test rays
+- File: `Demo.Shared/UnitTests/VoxelEngineTestBase.Raycast.cs`
+
+### Sprint 3: Rendering Foundation + Collision (Phase 3)
 
 **3.1 Reversed-Z Depth**
 - depth32float, depthCompare: greater, clearValue: 0.0
@@ -221,6 +243,31 @@ let baseLayer = blockType * textureLayersPerType + variant * 3u; // *3 for diffu
 - Front-to-back for opaque, reverse for transparent (same sort, two passes)
 - New file: `Rendering/DrawOrderKernels.cs`
 - Tests: Nearest-first ordering, reorder correctness
+
+**3.4 AABB-Voxel Collision**
+- Player/entity bounding box vs block grid collision detection
+- Sweep test: given AABB + velocity, find first block collision and slide response
+- Used for: walking (can't go through walls), falling (ground detection), jumping (ceiling)
+- GPU kernel for batch collision testing (multiple entities simultaneously)
+- CPU version for single-entity game-loop usage
+- Configurable: which block types are solid (uses BlockRegistry transparency field)
+- New file: `Physics/VoxelCollision.cs`
+- CPU reference: `Physics/VoxelCollisionCpuReference.cs`
+- Tests:
+  - AABB resting on solid floor: no penetration
+  - AABB moving into wall: stopped at surface
+  - AABB falling through air: no collision until ground
+  - AABB at block corner: correct slide response
+  - Transparent blocks (water, glass): configurable pass-through
+- File: `Demo.Shared/UnitTests/VoxelEngineTestBase.Collision.cs`
+
+**3.5 Sphere-Voxel Intersection**
+- All blocks within sphere radius from center point
+- Used for: explosion damage, area-of-effect, proximity detection
+- GPU kernel: one thread per block in bounding box, distance check
+- Returns: list of affected block positions and types
+- New file: `Physics/VoxelSphereQuery.cs`
+- Tests: Sphere at block center hits correct count, edge blocks included/excluded correctly
 
 ### Sprint 4: Quality Controller (Phase 4)
 
@@ -402,9 +449,9 @@ let baseLayer = blockType * textureLayersPerType + variant * 3u; // *3 for diffu
 **10.4 Structural Integrity**
 - Post-destruction flood fill from ground upward
 - Blocks not connected to ground -> mark for collapse
-- GPU flood fill kernel (similar to cave visibility flood fill)
+- GPU flood fill kernel (similar to cave visibility flood fill, reuses Physics/ infrastructure)
 - Collapsed blocks become game-level falling entities (not engine responsibility)
-- New file: `Destruction/StructuralIntegrity.cs`
+- New file: `Physics/StructuralIntegrity.cs` (in Physics/ alongside other voxel physics)
 - Tests: Pillar with base removed -> entire pillar collapses, bridge with supports -> stays
 
 ### Sprint 11: VR/AR (Phase 11)
