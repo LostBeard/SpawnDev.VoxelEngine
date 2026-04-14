@@ -682,6 +682,40 @@ Every phase MUST have:
 
 ---
 
+## Companion Library: SpawnDev.GameUI
+
+SpawnDev.VoxelEngine handles the 3D voxel world. SpawnDev.GameUI handles ALL user interface - separate library, same ecosystem. Not voxel-specific - any SpawnDev game can use it.
+
+**Scope:**
+- UI element hierarchy (panel, button, text, slider, checkbox, list, grid)
+- Layout system (flex, grid, absolute positioning)
+- GPU-rendered text (SDF font atlas via ILGPU)
+- Theme/styling system (dark theme, custom colors, per-game branding)
+- Input routing (mouse/touch/gaze/VR controller/hand tracking -> UI events)
+
+**Four rendering modes (one library):**
+- Screen-space 2D: PC/tablet HUD overlay
+- World-space 3D: VR floating panels, menus
+- View-anchored: VR HUD (moves with head, fixed distance)
+- World-anchored AR: labels/guides pinned to real-world positions
+
+**Integration with VoxelEngine:**
+- VR controller ray: UI panels get first hit priority, pass-through to VoxelEngine raycaster if no UI hit
+- Camera transform from VoxelEngine positions view-anchored UI
+- Block selection data from engine drives UI tooltips/crosshair
+
+**Tech stack:** Same as VoxelEngine - SpawnDev.ILGPU (GPU text rendering), SpawnDev.BlazorJS (browser), PlaywrightMultiTest (testing). Builds on SpawnScene's existing UIElement/UIRenderer/FontAtlas if applicable.
+
+**Project structure:** `D:\users\tj\Projects\SpawnDev.GameUI\` - same layout as VoxelEngine (library, Demo, DemoConsole, PlaywrightMultiTest).
+
+**Timeline:** Start after VoxelEngine Sprint 4 (quality controller). Both consuming projects need UI before they can be played, but the engine must render the world first.
+
+**Both consuming projects need:**
+- AubsCraft: Admin panel (already Razor-based), VR world viewer HUD, settings
+- Lost Spawns: Inventory, crafting, health/stamina, DayZ-style interaction menus, VR/AR support
+
+---
+
 ## NuGet Versioning
 
 ```
