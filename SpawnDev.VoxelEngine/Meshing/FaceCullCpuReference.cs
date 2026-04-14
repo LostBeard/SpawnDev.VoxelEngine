@@ -66,8 +66,8 @@ namespace SpawnDev.VoxelEngine.Meshing
                     faceMasks[innerIdx + 1 * innerCount] = col & ~colNegX;
                     faceMasks[innerIdx + 2 * innerCount] = col & ~colPosZ;
                     faceMasks[innerIdx + 3 * innerCount] = col & ~colNegZ;
-                    faceMasks[innerIdx + 4 * innerCount] = col & ~(col << 1) & pMask;
-                    faceMasks[innerIdx + 5 * innerCount] = col & ~(col >> 1) & pMask;
+                    faceMasks[innerIdx + 4 * innerCount] = col & ~(col >> 1) & pMask;
+                    faceMasks[innerIdx + 5 * innerCount] = col & ~(col << 1) & pMask;
                 }
             }
 

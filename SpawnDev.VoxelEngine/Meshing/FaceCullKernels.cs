@@ -88,10 +88,10 @@ namespace SpawnDev.VoxelEngine.Meshing
             faceMasks[innerIdx + 2 * innerCount] = col & ~colPosZ;
             // -Z face: solid here AND air at -Z neighbor
             faceMasks[innerIdx + 3 * innerCount] = col & ~colNegZ;
-            // +Y face: solid here AND air above (shift up)
-            faceMasks[innerIdx + 4 * innerCount] = col & ~(col << 1) & pMask;
-            // -Y face: solid here AND air below (shift down)
-            faceMasks[innerIdx + 5 * innerCount] = col & ~(col >> 1) & pMask;
+            // +Y face: solid here AND air above (neighbor at y+1, which is bit shifted left)
+            faceMasks[innerIdx + 4 * innerCount] = col & ~(col >> 1) & pMask;
+            // -Y face: solid here AND air below (neighbor at y-1, which is bit shifted right)
+            faceMasks[innerIdx + 5 * innerCount] = col & ~(col << 1) & pMask;
         }
     }
 }
