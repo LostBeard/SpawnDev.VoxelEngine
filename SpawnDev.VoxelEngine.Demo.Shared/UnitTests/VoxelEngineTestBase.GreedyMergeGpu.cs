@@ -100,6 +100,10 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             occupancyKernel(new Index2D(paddedXZ, paddedXZ),
                 gpuBlocks.View, gpuOccupancy.View, paddedXZ, height);
 
+            // WORKAROUND: Browser backends don't implicitly serialize stream dispatches.
+            // Tuvok fixing stream ordering in ILGPU (Rule 2).
+            await accelerator.SynchronizeAsync();
+
             // Step 2: Face Cull
             using var gpuFaceMasks = accelerator.Allocate1D<long>(innerCount * 6);
 
@@ -120,6 +124,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             // Verify face cull matches CPU
             if (gpuTotalFaces != cpuTotalFaces)
                 throw new Exception($"Face count mismatch before merge: GPU={gpuTotalFaces}, CPU={cpuTotalFaces}");
+
+            // WORKAROUND: Sync before re-dispatching on same buffer after readback
+            await accelerator.SynchronizeAsync();
 
             // Step 3: Greedy Merge
             int maxMergeLayer = Math.Max(height, chunkXZ);
