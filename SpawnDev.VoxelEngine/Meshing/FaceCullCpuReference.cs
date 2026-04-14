@@ -25,7 +25,7 @@ namespace SpawnDev.VoxelEngine.Meshing
                     for (int y = 0; y < height && y < 64; y++)
                     {
                         int blockType = paddedBlocks[baseIdx + y * stride];
-                        if (blockType != 0)
+                        if ((blockType & 0xFFF) != 0) // non-air (mask to 12-bit type)
                         {
                             column |= 1L << y;
                         }
@@ -105,17 +105,17 @@ namespace SpawnDev.VoxelEngine.Meshing
                     for (int x = 1; x < paddedXZ - 1; x++)
                     {
                         int idx = x + z * paddedXZ + y * stride;
-                        if (paddedBlocks[idx] == 0) continue; // air, skip
+                        if ((paddedBlocks[idx] & 0xFFF) == 0) continue; // air, skip
 
-                        // Check 6 neighbors
-                        if (x + 1 < paddedXZ && paddedBlocks[(x + 1) + z * paddedXZ + y * stride] == 0) count++;
-                        if (x - 1 >= 0 && paddedBlocks[(x - 1) + z * paddedXZ + y * stride] == 0) count++;
-                        if (z + 1 < paddedXZ && paddedBlocks[x + (z + 1) * paddedXZ + y * stride] == 0) count++;
-                        if (z - 1 >= 0 && paddedBlocks[x + (z - 1) * paddedXZ + y * stride] == 0) count++;
-                        if (y + 1 < height && paddedBlocks[x + z * paddedXZ + (y + 1) * stride] == 0) count++;
-                        else if (y + 1 >= height) count++; // top of world = face visible
-                        if (y - 1 >= 0 && paddedBlocks[x + z * paddedXZ + (y - 1) * stride] == 0) count++;
-                        else if (y - 1 < 0) count++; // bottom of world = face visible
+                        // Check 6 neighbors (mask to 12-bit type for air check)
+                        if (x + 1 < paddedXZ && (paddedBlocks[(x + 1) + z * paddedXZ + y * stride] & 0xFFF) == 0) count++;
+                        if (x - 1 >= 0 && (paddedBlocks[(x - 1) + z * paddedXZ + y * stride] & 0xFFF) == 0) count++;
+                        if (z + 1 < paddedXZ && (paddedBlocks[x + (z + 1) * paddedXZ + y * stride] & 0xFFF) == 0) count++;
+                        if (z - 1 >= 0 && (paddedBlocks[x + (z - 1) * paddedXZ + y * stride] & 0xFFF) == 0) count++;
+                        if (y + 1 < height && (paddedBlocks[x + z * paddedXZ + (y + 1) * stride] & 0xFFF) == 0) count++;
+                        else if (y + 1 >= height) count++; // top of section = face visible
+                        if (y - 1 >= 0 && (paddedBlocks[x + z * paddedXZ + (y - 1) * stride] & 0xFFF) == 0) count++;
+                        else if (y - 1 < 0) count++; // bottom of section = face visible
                     }
                 }
             }

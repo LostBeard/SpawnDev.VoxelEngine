@@ -56,7 +56,7 @@ namespace SpawnDev.VoxelEngine.Meshing
                         int innerIdx = faceOffset + x + z * chunkXZ;
                         if ((masks[innerIdx] & (1L << yLayer)) == 0) { x++; continue; }
 
-                        int blockType = paddedBlocks[(x + 1) + (z + 1) * paddedXZ + yLayer * stride];
+                        int blockType = paddedBlocks[(x + 1) + (z + 1) * paddedXZ + yLayer * stride] & 0xFFF;
 
                         // Extend width
                         int w = 1;
@@ -64,7 +64,7 @@ namespace SpawnDev.VoxelEngine.Meshing
                         {
                             int ni = faceOffset + (x + w) + z * chunkXZ;
                             if ((masks[ni] & (1L << yLayer)) == 0) break;
-                            int nt = paddedBlocks[(x + w + 1) + (z + 1) * paddedXZ + yLayer * stride];
+                            int nt = paddedBlocks[(x + w + 1) + (z + 1) * paddedXZ + yLayer * stride] & 0xFFF;
                             if (nt != blockType) break;
                             w++;
                         }
@@ -78,7 +78,7 @@ namespace SpawnDev.VoxelEngine.Meshing
                             {
                                 int ci = faceOffset + (x + dx) + (z + h) * chunkXZ;
                                 if ((masks[ci] & (1L << yLayer)) == 0) { canExtend = false; break; }
-                                int ct = paddedBlocks[(x + dx + 1) + (z + h + 1) * paddedXZ + yLayer * stride];
+                                int ct = paddedBlocks[(x + dx + 1) + (z + h + 1) * paddedXZ + yLayer * stride] & 0xFFF;
                                 if (ct != blockType) { canExtend = false; break; }
                             }
                             if (canExtend) h++;
@@ -121,13 +121,13 @@ namespace SpawnDev.VoxelEngine.Meshing
 
                         int px = (isXFace ? layer : outer) + 1;
                         int pz = (isXFace ? outer : layer) + 1;
-                        int blockType = paddedBlocks[px + pz * paddedXZ + y * stride];
+                        int blockType = paddedBlocks[px + pz * paddedXZ + y * stride] & 0xFFF;
 
                         // Extend along Y
                         int h = 1;
                         while (y + h < height && (mask & (1L << (y + h))) != 0)
                         {
-                            int nt = paddedBlocks[px + pz * paddedXZ + (y + h) * stride];
+                            int nt = paddedBlocks[px + pz * paddedXZ + (y + h) * stride] & 0xFFF;
                             if (nt != blockType) break;
                             h++;
                         }
@@ -151,7 +151,7 @@ namespace SpawnDev.VoxelEngine.Meshing
                                 if ((nm & (1L << (y + dy))) == 0) { allMatch = false; break; }
                                 int npx = (isXFace ? layer : outer + w) + 1;
                                 int npz = (isXFace ? outer + w : layer) + 1;
-                                int nt = paddedBlocks[npx + npz * paddedXZ + (y + dy) * stride];
+                                int nt = paddedBlocks[npx + npz * paddedXZ + (y + dy) * stride] & 0xFFF;
                                 if (nt != blockType) { allMatch = false; break; }
                             }
                             if (!allMatch) break;

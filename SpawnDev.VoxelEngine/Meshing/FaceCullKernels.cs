@@ -35,7 +35,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             for (int y = 0; y < height && y < 64; y++)
             {
                 int blockType = paddedBlocks[baseIdx + y * stride];
-                if (blockType != 0) // non-air
+                if ((blockType & 0xFFF) != 0) // non-air (mask to 12-bit type)
                 {
                     column |= 1L << y;
                 }
