@@ -1,38 +1,23 @@
-[21:54:53.404] [T4] Init() started
-[21:54:53.407] [T4] Discovering projects...
-[21:54:53.421] [T4] Found 2 projects
-[21:54:53.422] [T4] Publishing SpawnDev.VoxelEngine.Demo...
-[21:54:53.424] [T4] RunDotnetAsync: dotnet publish (timeout=300s)
-[21:54:53.430] [T4] RunDotnetAsync: started PID=14096
-[21:55:09.450] [T10,pool] RunDotnetAsync: done PID=14096 exit=0
-[21:55:09.452] [T10,pool] Publish SpawnDev.VoxelEngine.Demo: exit=0
-[21:55:09.453] [T10,pool] Installing Playwright browsers...
-[21:55:10.427] [T10,pool] Creating Playwright instance...
-[21:55:10.806] [T13,pool] Launching Chromium (persistent profile: C:\Users\TJ\AppData\Local\Temp\SpawnDev.ILGPU.PlaywrightProfile)...
-[21:55:11.520] [T10,pool] Navigating to https://localhost:5451/tests...
-[21:55:11.967] [T18,pool] Page loaded, waiting for test table...
-[21:55:41.985] [T20,pool] Error initializing SpawnDev.VoxelEngine.Demo: Timeout 30000ms exceeded.
-Call log:
-  - waiting for Locator("table.unit-test-ready") to be visible
-[21:55:41.986] [T20,pool] Publishing SpawnDev.VoxelEngine.DemoConsole...
-[21:55:41.986] [T20,pool] RunDotnetAsync: dotnet publish (timeout=300s)
-[21:55:41.990] [T20,pool] RunDotnetAsync: started PID=25716
-[21:55:43.636] [T23,pool] RunDotnetAsync: done PID=25716 exit=0
-[21:55:43.637] [T23,pool] Publish SpawnDev.VoxelEngine.DemoConsole: exit=0
-[21:55:43.638] [T23,pool] Enumerating tests from SpawnDev.VoxelEngine.DemoConsole.exe...
-[21:55:43.762] [T15,pool] Enumeration done: exit=0, lines=33
-[21:55:43.763] [T15,pool] Init() complete. Total projects=2, total tests=35
-[21:56:02.827] [T10,pool] [Coord error] Failed to load resource: the server responded with a status of 404 ()
-[21:56:02.911] [T10,pool] [Coord error] MONO_WASM: Runtime module already loaded
-Error: Runtime module already loaded
-    at ft (https://localhost:5451/_framework/dotnet.runtime.peu2mfb29t.js:3:18337)
-    at ut (https://localhost:5451/_framework/dotnet.js:4:33062)
-    at https://localhost:5451/_framework/dotnet.js:4:31956
-    at async https://localhost:5451/_framework/dotnet.js:4:37054
-    at async Object.create (https://localhost:5451/_framework/dotnet.js:4:37024)
-    at async https://localhost:5451/_framework/blazor.webassembly.js:1:45127
-    at async https://localhost:5451/_framework/blazor.webassembly.js:1:58786
-    at async qt (https://localhost:5451/_framework/blazor.webassembly.js:1:58381)
-[21:56:02.912] [T10,pool] [Coord error] MONO_WASM: instantiate_wasm_module() failed TypeError: Failed to execute 'compile' on 'WebAssembly': Cannot compile WebAssembly.Module from an already read Response
-[21:56:02.921] [T10,pool] [Coord error] Error in mono_download_assets: Error: Runtime module already loaded
-[21:56:02.922] [T10,pool] [Coord error] Error in mono_download_assets: Error: Runtime module already loaded
+[21:57:39.036] [T4] Init() started
+[21:57:39.039] [T4] Discovering projects...
+[21:57:39.053] [T4] Found 2 projects
+[21:57:39.054] [T4] Publishing SpawnDev.VoxelEngine.Demo...
+[21:57:39.056] [T4] RunDotnetAsync: dotnet publish (timeout=300s)
+[21:57:39.060] [T4] RunDotnetAsync: started PID=30344
+[21:57:45.475] [T14,pool] RunDotnetAsync: done PID=30344 exit=0
+[21:57:45.476] [T14,pool] Publish SpawnDev.VoxelEngine.Demo: exit=0
+[21:57:45.477] [T14,pool] Installing Playwright browsers...
+[21:57:45.965] [T14,pool] Creating Playwright instance...
+[21:57:46.342] [T18,pool] Launching Chromium (persistent profile: C:\Users\TJ\AppData\Local\Temp\SpawnDev.ILGPU.PlaywrightProfile)...
+[21:57:46.919] [T18,pool] Navigating to https://localhost:5451/tests...
+[21:57:47.314] [T15,pool] Page loaded, waiting for test table...
+[21:57:48.006] [T15,pool] Test table ready
+[21:57:48.012] [T15,pool] Browser tests enumerated: 1 tests
+[21:57:48.013] [T15,pool] Publishing SpawnDev.VoxelEngine.DemoConsole...
+[21:57:48.013] [T15,pool] RunDotnetAsync: dotnet publish (timeout=300s)
+[21:57:48.018] [T15,pool] RunDotnetAsync: started PID=12580
+[21:57:49.442] [T7,pool] RunDotnetAsync: done PID=12580 exit=0
+[21:57:49.442] [T7,pool] Publish SpawnDev.VoxelEngine.DemoConsole: exit=0
+[21:57:49.443] [T7,pool] Enumerating tests from SpawnDev.VoxelEngine.DemoConsole.exe...
+[21:57:49.612] [T14,pool] Enumeration done: exit=0, lines=51
+[21:57:49.614] [T14,pool] Init() complete. Total projects=2, total tests=53
