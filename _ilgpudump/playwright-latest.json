@@ -1,0 +1,263 @@
+{
+  "runStart": "2026-04-13 21:55:44",
+  "lastUpdate": "2026-04-13 21:56:05",
+  "elapsed": "21s",
+  "passed": 35,
+  "failed": 1,
+  "skipped": 0,
+  "total": 36,
+  "tests": [
+    {
+      "name": "Build SpawnDev.VoxelEngine.Demo",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 0.1,
+      "timestamp": "21:55:44"
+    },
+    {
+      "name": "Build SpawnDev.VoxelEngine.DemoConsole",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 0,
+      "timestamp": "21:55:44"
+    },
+    {
+      "name": "CPUTests.FaceCull_SingleBlock_Exactly6Faces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 1096.5,
+      "timestamp": "21:55:45"
+    },
+    {
+      "name": "CPUTests.FaceCull_FlatTerrain_MatchesCpuReference",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 580,
+      "timestamp": "21:55:46"
+    },
+    {
+      "name": "CPUTests.FaceCull_SolidCube_OnlyExteriorFaces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 561.8,
+      "timestamp": "21:55:47"
+    },
+    {
+      "name": "CPUTests.FaceCull_Checkerboard_WorstCase",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 551.8,
+      "timestamp": "21:55:47"
+    },
+    {
+      "name": "CPUTests.FaceCull_HollowBox_InteriorFacesHidden",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 570.2,
+      "timestamp": "21:55:48"
+    },
+    {
+      "name": "CPUTests.FaceCull_EmptyChunk_ZeroFaces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 559.6,
+      "timestamp": "21:55:48"
+    },
+    {
+      "name": "CPUTests.GreedyMerge_SingleBlock_6Quads",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 395.1,
+      "timestamp": "21:55:49"
+    },
+    {
+      "name": "CPUTests.GreedyMerge_FlatTerrain_MergesTopFace",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 389.3,
+      "timestamp": "21:55:49"
+    },
+    {
+      "name": "CPUTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 368.1,
+      "timestamp": "21:55:50"
+    },
+    {
+      "name": "CPUTests.GreedyMerge_Checkerboard_NoMergingPossible",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 373.8,
+      "timestamp": "21:55:50"
+    },
+    {
+      "name": "CPUTests.GreedyMerge_SolidCube_MaximalMerge",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 360.7,
+      "timestamp": "21:55:50"
+    },
+    {
+      "name": "CudaTests.FaceCull_SingleBlock_Exactly6Faces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 543.4,
+      "timestamp": "21:55:51"
+    },
+    {
+      "name": "CudaTests.FaceCull_FlatTerrain_MatchesCpuReference",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 549.1,
+      "timestamp": "21:55:52"
+    },
+    {
+      "name": "CudaTests.FaceCull_SolidCube_OnlyExteriorFaces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 559.7,
+      "timestamp": "21:55:52"
+    },
+    {
+      "name": "CudaTests.FaceCull_Checkerboard_WorstCase",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 548.4,
+      "timestamp": "21:55:53"
+    },
+    {
+      "name": "CudaTests.FaceCull_HollowBox_InteriorFacesHidden",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 546.6,
+      "timestamp": "21:55:53"
+    },
+    {
+      "name": "CudaTests.FaceCull_EmptyChunk_ZeroFaces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 543.5,
+      "timestamp": "21:55:54"
+    },
+    {
+      "name": "CudaTests.GreedyMerge_SingleBlock_6Quads",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 364.8,
+      "timestamp": "21:55:54"
+    },
+    {
+      "name": "CudaTests.GreedyMerge_FlatTerrain_MergesTopFace",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 370.5,
+      "timestamp": "21:55:55"
+    },
+    {
+      "name": "CudaTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 363.6,
+      "timestamp": "21:55:55"
+    },
+    {
+      "name": "CudaTests.GreedyMerge_Checkerboard_NoMergingPossible",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 366.5,
+      "timestamp": "21:55:56"
+    },
+    {
+      "name": "CudaTests.GreedyMerge_SolidCube_MaximalMerge",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 368.8,
+      "timestamp": "21:55:56"
+    },
+    {
+      "name": "OpenCLTests.FaceCull_SingleBlock_Exactly6Faces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 554.3,
+      "timestamp": "21:55:57"
+    },
+    {
+      "name": "OpenCLTests.FaceCull_FlatTerrain_MatchesCpuReference",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 556.2,
+      "timestamp": "21:55:57"
+    },
+    {
+      "name": "OpenCLTests.FaceCull_SolidCube_OnlyExteriorFaces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 560.5,
+      "timestamp": "21:55:58"
+    },
+    {
+      "name": "OpenCLTests.FaceCull_Checkerboard_WorstCase",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 580.8,
+      "timestamp": "21:55:58"
+    },
+    {
+      "name": "OpenCLTests.FaceCull_HollowBox_InteriorFacesHidden",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 597.6,
+      "timestamp": "21:55:59"
+    },
+    {
+      "name": "OpenCLTests.FaceCull_EmptyChunk_ZeroFaces",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 595.9,
+      "timestamp": "21:56:00"
+    },
+    {
+      "name": "OpenCLTests.GreedyMerge_SingleBlock_6Quads",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 486.4,
+      "timestamp": "21:56:00"
+    },
+    {
+      "name": "OpenCLTests.GreedyMerge_FlatTerrain_MergesTopFace",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 398.2,
+      "timestamp": "21:56:01"
+    },
+    {
+      "name": "OpenCLTests.GreedyMerge_StripedTerrain_RespectsBlockTypes",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 558.3,
+      "timestamp": "21:56:01"
+    },
+    {
+      "name": "OpenCLTests.GreedyMerge_Checkerboard_NoMergingPossible",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 403.5,
+      "timestamp": "21:56:02"
+    },
+    {
+      "name": "OpenCLTests.GreedyMerge_SolidCube_MaximalMerge",
+      "result": "Pass",
+      "error": null,
+      "durationMs": 429.3,
+      "timestamp": "21:56:02"
+    },
+    {
+      "name": "P2PSwarm.TwoTab_PeerDiscovery",
+      "result": "Fail",
+      "error": "Target page, context or browser has been closed\nCall log:\n  - waiting for Locator(\u0022button:has-text(\u0027Create Swarm\u0027)\u0022) to be visible",
+      "durationMs": 2344.4,
+      "timestamp": "21:56:05"
+    }
+  ]
+}

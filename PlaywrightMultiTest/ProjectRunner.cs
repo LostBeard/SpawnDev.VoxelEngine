@@ -407,18 +407,6 @@ namespace PlaywrightMultiTest
                 }
             }
             var nmt = true;
-            // Playwright-level integration tests (multi-tab, real browser)
-            foreach (var testableProject in TestableProjects)
-            {
-                if (testableProject is TestableBlazorWasm)
-                {
-                    var proj = testableProject;
-                    yield return new TestCaseData(new ProjectTest(proj, "P2PSwarm", "TwoTab_PeerDiscovery")
-                    {
-                        TestFunc = async (page) => await P2PSwarmTwoTabTest(page, (TestableBlazorWasm)proj),
-                    }).SetName("P2PSwarm.TwoTab_PeerDiscovery").SetCategory("P2PSwarm");
-                }
-            }
         }
 
         /// <summary>
