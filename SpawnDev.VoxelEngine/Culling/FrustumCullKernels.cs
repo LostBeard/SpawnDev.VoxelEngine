@@ -109,27 +109,31 @@ namespace SpawnDev.VoxelEngine.Culling
         /// </summary>
         public static float[] ExtractFrustumPlanes(float[] viewProjRowMajor)
         {
-            // .NET Matrix4x4 is row-major: m[row, col] = array[row*4+col]
-            // Gribb-Hartmann extracts from rows of the transpose (= columns of row-major)
-            float m00 = viewProjRowMajor[0], m01 = viewProjRowMajor[1], m02 = viewProjRowMajor[2], m03 = viewProjRowMajor[3];
-            float m10 = viewProjRowMajor[4], m11 = viewProjRowMajor[5], m12 = viewProjRowMajor[6], m13 = viewProjRowMajor[7];
-            float m20 = viewProjRowMajor[8], m21 = viewProjRowMajor[9], m22 = viewProjRowMajor[10], m23 = viewProjRowMajor[11];
-            float m30 = viewProjRowMajor[12], m31 = viewProjRowMajor[13], m32 = viewProjRowMajor[14], m33 = viewProjRowMajor[15];
+            // .NET Matrix4x4 is row-major with post-multiply convention (v * M).
+            // Gribb-Hartmann for post-multiply extracts from COLUMNS of the matrix
+            // (equivalent to rows of the transpose).
+            //
+            // Row-major layout: m[row*4+col]
+            // Column 0: m[0], m[4], m[8], m[12]
+            // Column 1: m[1], m[5], m[9], m[13]
+            // Column 2: m[2], m[6], m[10], m[14]
+            // Column 3: m[3], m[7], m[11], m[15]
 
+            float[] m = viewProjRowMajor;
             var planes = new float[24];
 
-            // Left: row3 + row0
-            SetPlane(planes, 0, m30 + m00, m31 + m01, m32 + m02, m33 + m03);
-            // Right: row3 - row0
-            SetPlane(planes, 1, m30 - m00, m31 - m01, m32 - m02, m33 - m03);
-            // Bottom: row3 + row1
-            SetPlane(planes, 2, m30 + m10, m31 + m11, m32 + m12, m33 + m13);
-            // Top: row3 - row1
-            SetPlane(planes, 3, m30 - m10, m31 - m11, m32 - m12, m33 - m13);
-            // Near: row3 + row2
-            SetPlane(planes, 4, m30 + m20, m31 + m21, m32 + m22, m33 + m23);
-            // Far: row3 - row2
-            SetPlane(planes, 5, m30 - m20, m31 - m21, m32 - m22, m33 - m23);
+            // Left: col3 + col0
+            SetPlane(planes, 0, m[3] + m[0], m[7] + m[4], m[11] + m[8], m[15] + m[12]);
+            // Right: col3 - col0
+            SetPlane(planes, 1, m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12]);
+            // Bottom: col3 + col1
+            SetPlane(planes, 2, m[3] + m[1], m[7] + m[5], m[11] + m[9], m[15] + m[13]);
+            // Top: col3 - col1
+            SetPlane(planes, 3, m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13]);
+            // Near: col3 + col2
+            SetPlane(planes, 4, m[3] + m[2], m[7] + m[6], m[11] + m[10], m[15] + m[14]);
+            // Far: col3 - col2
+            SetPlane(planes, 5, m[3] - m[2], m[7] - m[6], m[11] - m[10], m[15] - m[14]);
 
             return planes;
         }
