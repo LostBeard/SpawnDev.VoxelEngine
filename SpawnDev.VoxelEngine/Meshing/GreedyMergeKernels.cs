@@ -145,13 +145,14 @@ namespace SpawnDev.VoxelEngine.Meshing
                         if (canExtend) h++;
                     }
 
-                    // Clear consumed bits from face masks
+                    // Clear consumed bits from face masks using i64 Atomic.And
+                    // (safe for concurrent Y-layer threads on WebGPU, v4.9.2+)
                     for (int dz = 0; dz < h; dz++)
                     {
                         for (int dx = 0; dx < w; dx++)
                         {
                             int clearIdx = faceOffset + (x + dx) + (z + dz) * chunkXZ;
-                            faceMasks[clearIdx] &= ~(1L << yLayer);
+                            Atomic.And(ref faceMasks[clearIdx], ~(1L << yLayer));
                         }
                     }
 
