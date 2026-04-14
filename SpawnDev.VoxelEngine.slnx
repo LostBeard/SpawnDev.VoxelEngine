@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="SpawnDev.VoxelEngine/SpawnDev.VoxelEngine.csproj" />
+  <Project Path="SpawnDev.VoxelEngine.Demo/SpawnDev.VoxelEngine.Demo.csproj" />
+  <Project Path="SpawnDev.VoxelEngine.Demo.Shared/SpawnDev.VoxelEngine.Demo.Shared.csproj" />
+  <Project Path="SpawnDev.VoxelEngine.DemoConsole/SpawnDev.VoxelEngine.DemoConsole.csproj" />
+  <Project Path="PlaywrightMultiTest/PlaywrightMultiTest.csproj" />
+</Solution>

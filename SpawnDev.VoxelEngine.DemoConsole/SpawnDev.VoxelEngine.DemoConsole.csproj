@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlaywrightMultiTest></PlaywrightMultiTest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SpawnDev.VoxelEngine\SpawnDev.VoxelEngine.csproj" />
+    <ProjectReference Include="..\SpawnDev.VoxelEngine.Demo.Shared\SpawnDev.VoxelEngine.Demo.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

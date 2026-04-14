@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <LibraryTargetFrameworks>net10.0</LibraryTargetFrameworks>
+    <LibraryLatestTargetFramework>$(LibraryTargetFrameworks)</LibraryLatestTargetFramework>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LibraryVersionPrefix>0.1.0</LibraryVersionPrefix>
+    <LibraryAssemblyVersion>0.1.0.0</LibraryAssemblyVersion>
+    <LibraryFileVersion>0.1.0.0</LibraryFileVersion>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SpawnDev.UnitTesting.Blazor" Version="2.4.2" />
+    <PackageReference Include="SpawnDev.ILGPU" Version="4.9.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SpawnDev.VoxelEngine\SpawnDev.VoxelEngine.csproj" />
+  </ItemGroup>
+
+</Project>

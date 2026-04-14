@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<Version>0.1.0</Version>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<EmbedAllSources>true</EmbedAllSources>
+		<DebugType>Embedded</DebugType>
+		<Title>SpawnDev.VoxelEngine</Title>
+		<Authors>LostBeard</Authors>
+		<Description>High-performance voxel engine built on SpawnDev.ILGPU. GPU-accelerated binary greedy meshing, culling, LOD, and rendering targeting WebGPU, CUDA, OpenCL, and CPU from a single codebase.</Description>
+		<PackageProjectUrl>https://github.com/LostBeard/SpawnDev.VoxelEngine</PackageProjectUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+		<PackageIcon>icon-128.png</PackageIcon>
+		<RepositoryUrl>https://github.com/LostBeard/SpawnDev.VoxelEngine.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>Voxel;VoxelEngine;GPU;WebGPU;ILGPU;Blazor;BlazorWebAssembly;Meshing;GreedyMeshing;LOD;OcclusionCulling;ComputeShader;CrossPlatform;GameEngine</PackageTags>
+		<NoPackageAnalysis>true</NoPackageAnalysis>
+		<EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+		<IsPackable>true</IsPackable>
+		<LangVersion>latest</LangVersion>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="SpawnDev.ILGPU" Version="4.9.*" />
+		<PackageReference Include="SpawnDev.BlazorJS" Version="3.*" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="Assets\icon-128.png" Pack="true" PackagePath="\" />
+		<None Include="..\LICENSE.txt" Pack="true" PackagePath="\" />
+		<None Include="..\README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<SupportedPlatform Include="browser" />
+		<SupportedPlatform Include="windows" />
+		<SupportedPlatform Include="linux" />
+		<SupportedPlatform Include="macos" />
+	</ItemGroup>
+
+</Project>

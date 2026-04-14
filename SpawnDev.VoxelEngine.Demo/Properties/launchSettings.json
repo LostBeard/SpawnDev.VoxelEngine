@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "SpawnDev.VoxelEngine.Demo": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:56308;http://localhost:56309"
+    }
+  }
+}
