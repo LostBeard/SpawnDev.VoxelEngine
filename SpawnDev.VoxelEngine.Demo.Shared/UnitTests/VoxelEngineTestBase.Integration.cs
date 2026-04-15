@@ -123,9 +123,10 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 throw new Exception($"Integration_RaycastDamage: expected hit at (8,0,8), got ({hit.BlockX},{hit.BlockY},{hit.BlockZ})");
 
             // 2. Damage the base block with an explosion
+            // Radius 0.9 ensures only y=0 block is hit (y=1 center is distance 1.0 away)
             int destroyed = ExplosionKernels.DestroyInSphere(
                 blocks, ss, ss,
-                new Vector3(8.5f, 0.5f, 8.5f), 1.0f, 100f, registry);
+                new Vector3(8.5f, 0.5f, 8.5f), 0.9f, 100f, registry);
 
             if (destroyed != 1)
                 throw new Exception($"Integration_RaycastDamage: expected 1 destroyed, got {destroyed}");

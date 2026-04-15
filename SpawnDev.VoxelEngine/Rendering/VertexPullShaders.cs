@@ -107,15 +107,19 @@ fn vs_main(@builtin(vertex_index) vertexID: u32) -> VertexOutput {
     // Compute corner position based on face direction
     var localPos: vec3<f32>;
 
+    // Corner layout per quad: 4 corners indexed by cornerIdx (0-3).
+    // Two triangles: (0,1,2) and (1,3,2) from cornerOrder.
+    // For positive faces (+X,+Y,+Z): corners sweep CCW from face normal -> correct winding.
+    // For negative faces (-X,-Y,-Z): reverse the secondary axis so cross product flips.
     switch (face) {
         case 0u: { // +X face (YZ plane at x+1)
             let cy = select(0.0, qh, cornerIdx == 1u || cornerIdx == 3u);
             let cz = select(0.0, qw, cornerIdx >= 2u);
             localPos = vec3<f32>(qx + 1.0, qy + cy, qz + cz);
         }
-        case 1u: { // -X face (YZ plane at x)
+        case 1u: { // -X face (YZ plane at x) - reversed Z for correct winding
             let cy = select(0.0, qh, cornerIdx == 1u || cornerIdx == 3u);
-            let cz = select(0.0, qw, cornerIdx >= 2u);
+            let cz = select(qw, 0.0, cornerIdx >= 2u);
             localPos = vec3<f32>(qx, qy + cy, qz + cz);
         }
         case 2u: { // +Z face (XY plane at z+1)
@@ -123,8 +127,8 @@ fn vs_main(@builtin(vertex_index) vertexID: u32) -> VertexOutput {
             let cy = select(0.0, qh, cornerIdx == 1u || cornerIdx == 3u);
             localPos = vec3<f32>(qx + cx, qy + cy, qz + 1.0);
         }
-        case 3u: { // -Z face (XY plane at z)
-            let cx = select(0.0, qw, cornerIdx >= 2u);
+        case 3u: { // -Z face (XY plane at z) - reversed X for correct winding
+            let cx = select(qw, 0.0, cornerIdx >= 2u);
             let cy = select(0.0, qh, cornerIdx == 1u || cornerIdx == 3u);
             localPos = vec3<f32>(qx + cx, qy + cy, qz);
         }
@@ -133,9 +137,9 @@ fn vs_main(@builtin(vertex_index) vertexID: u32) -> VertexOutput {
             let cz = select(0.0, qh, cornerIdx == 1u || cornerIdx == 3u);
             localPos = vec3<f32>(qx + cx, qy + 1.0, qz + cz);
         }
-        default: { // -Y face (XZ plane at y)
+        default: { // -Y face (XZ plane at y) - reversed Z for correct winding
             let cx = select(0.0, qw, cornerIdx >= 2u);
-            let cz = select(0.0, qh, cornerIdx == 1u || cornerIdx == 3u);
+            let cz = select(qh, 0.0, cornerIdx == 1u || cornerIdx == 3u);
             localPos = vec3<f32>(qx + cx, qy, qz + cz);
         }
     }

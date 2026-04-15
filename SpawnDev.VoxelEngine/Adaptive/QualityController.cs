@@ -96,8 +96,8 @@ namespace SpawnDev.VoxelEngine.Adaptive
             }
             _previousFrameTimeMs = frameTimeMs;
 
-            // Emergency: thermal detected -> drop to minimum immediately
-            if (ThermalDetected && Level < QualityLevel.Minimal)
+            // Emergency: thermal detected -> drop to minimum immediately and hold
+            if (ThermalDetected)
             {
                 Level = QualityLevel.Minimal;
                 OverBudgetFrames = 0;

@@ -189,25 +189,25 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         }
 
         /// <summary>
-        /// Test 5: Section behind solid wall is NOT visible via BFS.
-        /// Camera at (0,0,0), wall section at (1,0,0) has zero connectivity (solid),
-        /// section at (2,0,0) behind the wall should not be reachable.
+        /// Test 5: Section behind solid wall plane is NOT visible via BFS.
+        /// Camera at (0,0,0). An infinite wall plane at x=1 (all sections with Cx==1
+        /// have zero connectivity). Section at (2,0,0) behind the wall should not be
+        /// reachable because BFS cannot route around an infinite plane.
         /// </summary>
         [TestMethod]
         public void Visibility_BehindSolidWall_NotVisibleTest()
         {
             var cameraSection = new SectionCoord(0, 0, 0);
-            var wallSection = new SectionCoord(1, 0, 0);
             var behindWall = new SectionCoord(2, 0, 0);
 
             // Camera section: fully connected (open air)
-            // Wall section: zero connectivity (solid blocks)
+            // Wall plane at x=1: zero connectivity (solid blocks, infinite in Y and Z)
             // Behind wall: fully connected (open air)
             var visible = VisibilityGraph.ComputeVisibleSections(
                 cameraSection,
                 coord =>
                 {
-                    if (coord == wallSection) return 0L; // solid wall - blocks all light
+                    if (coord.Cx == 1) return 0L; // solid wall plane - blocks all paths at x=1
                     return ~0L; // everything else is fully open
                 },
                 maxDistance: 8);
@@ -215,15 +215,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             if (!visible.Contains(cameraSection))
                 throw new Exception("Visibility_BehindWall: camera section must be visible");
 
-            // Wall section itself should be visited (BFS enters it) but contributes no exits
-            // Actually, since the wall has 0 connectivity, HasConnection returns false,
-            // so the BFS never enters the wall section at all
-            // The wall section won't be in the visible set because it's never queued
-            // (camera checks HasConnection for face 0 = +X, but wall connectivity = 0)
-
             if (visible.Contains(behindWall))
                 throw new Exception(
-                    $"Visibility_BehindWall: section {behindWall} behind solid wall should NOT be visible, " +
+                    $"Visibility_BehindWall: section {behindWall} behind solid wall plane should NOT be visible, " +
                     $"but it was found in the visible set ({visible.Count} total visible)");
         }
 
