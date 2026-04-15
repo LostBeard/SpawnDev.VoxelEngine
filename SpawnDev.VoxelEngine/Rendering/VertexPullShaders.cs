@@ -36,6 +36,8 @@ struct Uniforms {
     fogDensity: f32,
     ambientColor: vec3<f32>,
     time: f32,
+    cameraWorldPos: vec3<f32>,
+    _pad0: f32,
 };
 
 struct VertexOutput {
@@ -173,8 +175,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Apply AO
     let litColor = in.color.rgb * lighting * in.ao;
 
-    // Fog (distance-based)
-    let dist = length(in.worldPos - uniforms.sectionOffset); // approximate camera dist
+    // Fog (distance from camera)
+    let dist = length(in.worldPos - uniforms.cameraWorldPos);
     let fogFactor = exp(-dist * uniforms.fogDensity * uniforms.fogDensity);
     let finalColor = mix(uniforms.fogColor, litColor, clamp(fogFactor, 0.0, 1.0));
 
@@ -191,6 +193,12 @@ struct Uniforms {
     mvp: mat4x4<f32>,
     sectionOffset: vec3<f32>,
     voxelSize: f32,
+    fogColor: vec3<f32>,
+    fogDensity: f32,
+    ambientColor: vec3<f32>,
+    time: f32,
+    cameraWorldPos: vec3<f32>,
+    _pad0: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;

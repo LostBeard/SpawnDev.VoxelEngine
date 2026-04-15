@@ -1,4 +1,5 @@
 using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.ILGPU;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -31,21 +32,46 @@ namespace SpawnDev.VoxelEngine.Rendering
         // Per-section bind groups cached by quad buffer identity
         private readonly Dictionary<nint, GPUBindGroup> _bindGroupCache = new();
 
+        // Dynamic uniform mode resources
+        private GPURenderPipeline? _dynamicPipeline;
+        private GPUBuffer? _dynamicUniformBuffer;
+        private GPUBindGroupLayout? _dynamicBindGroupLayout;
+        private readonly Dictionary<nint, GPUBindGroup> _dynamicBindGroupCache = new();
+        private int _dynamicMaxSections;
+        private byte[]? _dynamicStagingBuffer;
+        private string? _colorFormat;
+
+        /// <summary>
+        /// WebGPU minimum uniform buffer offset alignment (256 bytes per spec).
+        /// UniformData is 112 bytes, padded to 256 for dynamic offsets.
+        /// </summary>
+        public const int DynamicUniformAlignment = 256;
+
         /// <summary>Whether the pipeline is initialized and ready to render.</summary>
         public bool IsReady => _pipeline != null;
 
-        /// <summary>Uniform data layout matching the WGSL Uniforms struct.</summary>
+        /// <summary>Whether dynamic uniform mode is initialized.</summary>
+        public bool IsDynamicReady => _dynamicPipeline != null;
+
+        /// <summary>
+        /// Uniform data layout matching the WGSL Uniforms struct (128 bytes).
+        /// MVP uses GpuMatrix4x4 (column-major) so the row-major to column-major
+        /// conversion is explicit. Callers must use GpuMatrix4x4.FromMatrix4x4()
+        /// to convert .NET's row-major Matrix4x4 before passing to UpdateUniforms.
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct UniformData
         {
-            public Matrix4x4 MVP;           // 64 bytes
+            public GpuMatrix4x4 MVP;        // 64 bytes (column-major, matches WGSL mat4x4<f32>)
             public Vector3 SectionOffset;   // 12 bytes
             public float VoxelSize;         // 4 bytes
             public Vector3 FogColor;        // 12 bytes
             public float FogDensity;        // 4 bytes
             public Vector3 AmbientColor;    // 12 bytes
             public float Time;              // 4 bytes
-            // Total: 112 bytes (aligned to 16)
+            public Vector3 CameraWorldPos;  // 12 bytes
+            public float _pad0;             // 4 bytes (16-byte alignment padding)
+            // Total: 128 bytes
         }
 
         /// <summary>
@@ -60,6 +86,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         {
             _device = device;
             _queue = queue;
+            _colorFormat = colorFormat;
 
             // Default block colors if not provided
             if (blockColors == null)
@@ -165,15 +192,18 @@ namespace SpawnDev.VoxelEngine.Rendering
 
         /// <summary>
         /// Upload uniform data for the current frame/section.
+        /// MVP must be a GpuMatrix4x4 (column-major). Use GpuMatrix4x4.FromMatrix4x4()
+        /// to convert from .NET's row-major Matrix4x4.
         /// </summary>
         public void UpdateUniforms(
-            Matrix4x4 mvp,
+            GpuMatrix4x4 mvp,
             Vector3 sectionOffset,
             float voxelSize,
             Vector3 fogColor,
             float fogDensity,
             Vector3 ambientColor,
-            float time)
+            float time,
+            Vector3 cameraWorldPos)
         {
             if (_uniformBuffer == null || _queue == null) return;
 
@@ -186,6 +216,7 @@ namespace SpawnDev.VoxelEngine.Rendering
                 FogDensity = fogDensity,
                 AmbientColor = ambientColor,
                 Time = time,
+                CameraWorldPos = cameraWorldPos,
             };
 
             var bytes = new byte[128];
@@ -197,6 +228,249 @@ namespace SpawnDev.VoxelEngine.Rendering
                 }
             }
             _queue.WriteBuffer(_uniformBuffer, 0, bytes);
+        }
+
+        /// <summary>
+        /// Initialize dynamic uniform mode for batched multi-section rendering.
+        /// Allocates a large uniform ring buffer where each section's uniforms sit at a
+        /// 256-byte-aligned offset. This allows rendering all visible sections in a single
+        /// encoder/submit by passing dynamic offsets to SetBindGroup.
+        ///
+        /// Call after Init(). The standard per-section mode remains available alongside this.
+        /// </summary>
+        /// <param name="maxSections">Maximum sections renderable per frame. Determines buffer size.</param>
+        public void InitDynamic(int maxSections)
+        {
+            if (_device == null || _queue == null || _colorBuffer == null)
+                throw new InvalidOperationException("Call Init() before InitDynamic().");
+
+            _dynamicMaxSections = maxSections;
+
+            // Allocate ring buffer: maxSections * 256 bytes (aligned uniform slots)
+            var bufferSize = (ulong)(maxSections * DynamicUniformAlignment);
+            _dynamicUniformBuffer = _device.CreateBuffer(new GPUBufferDescriptor
+            {
+                Size = bufferSize,
+                Usage = GPUBufferUsage.Uniform | GPUBufferUsage.CopyDst,
+            });
+
+            // CPU staging buffer for batch upload
+            _dynamicStagingBuffer = new byte[maxSections * DynamicUniformAlignment];
+
+            // Explicit bind group layout with dynamic offset on the uniform binding
+            _dynamicBindGroupLayout = _device.CreateBindGroupLayout(new GPUBindGroupLayoutDescriptor
+            {
+                Entries = new GPUBindGroupLayoutEntry[]
+                {
+                    new()
+                    {
+                        Binding = 0,
+                        Visibility = GPUShaderStageFlags.VERTEX | GPUShaderStageFlags.FRAGMENT,
+                        Buffer = new GPUBufferBindingLayout
+                        {
+                            Type = "uniform",
+                            HasDynamicOffset = true,
+                            MinBindingSize = 128, // sizeof(UniformData)
+                        },
+                    },
+                    new()
+                    {
+                        Binding = 1,
+                        Visibility = GPUShaderStageFlags.VERTEX,
+                        Buffer = new GPUBufferBindingLayout
+                        {
+                            Type = "read-only-storage",
+                        },
+                    },
+                    new()
+                    {
+                        Binding = 2,
+                        Visibility = GPUShaderStageFlags.VERTEX | GPUShaderStageFlags.FRAGMENT,
+                        Buffer = new GPUBufferBindingLayout
+                        {
+                            Type = "read-only-storage",
+                        },
+                    },
+                },
+            });
+
+            // Pipeline layout with explicit bind group layout
+            using var pipelineLayout = _device.CreatePipelineLayout(new GPUPipelineLayoutDescriptor
+            {
+                BindGroupLayouts = new[] { _dynamicBindGroupLayout },
+            });
+
+            // Shader module (same shader - WGSL doesn't need to change for dynamic offsets)
+            using var shaderModule = _device.CreateShaderModule(new GPUShaderModuleDescriptor
+            {
+                Code = VertexPullShaders.SolidColorShader,
+            });
+
+            // Render pipeline identical to standard but with explicit layout
+            _dynamicPipeline = _device.CreateRenderPipeline(new GPURenderPipelineDescriptor
+            {
+                Layout = pipelineLayout,
+                Vertex = new GPUVertexState
+                {
+                    Module = shaderModule,
+                    EntryPoint = "vs_main",
+                },
+                Fragment = new GPUFragmentState
+                {
+                    Module = shaderModule,
+                    EntryPoint = "fs_main",
+                    Targets = new[]
+                    {
+                        new GPUColorTargetState
+                        {
+                            Format = _colorFormat!,
+                            Blend = new GPUBlendState
+                            {
+                                Color = new GPUBlendComponent
+                                {
+                                    SrcFactor = GPUBlendFactor.SrcAlpha,
+                                    DstFactor = GPUBlendFactor.OneMinusSrcAlpha,
+                                    Operation = GPUBlendOperation.Add,
+                                },
+                                Alpha = new GPUBlendComponent
+                                {
+                                    SrcFactor = GPUBlendFactor.One,
+                                    DstFactor = GPUBlendFactor.OneMinusSrcAlpha,
+                                    Operation = GPUBlendOperation.Add,
+                                },
+                            },
+                        },
+                    },
+                },
+                Primitive = new GPUPrimitiveState
+                {
+                    Topology = GPUPrimitiveTopology.TriangleList,
+                    CullMode = GPUCullMode.Back,
+                    FrontFace = GPUFrontFace.CCW,
+                },
+                DepthStencil = new GPUDepthStencilState
+                {
+                    Format = ReversedZHelper.DepthFormat,
+                    DepthWriteEnabled = true,
+                    DepthCompare = ReversedZHelper.DepthCompare,
+                },
+            });
+        }
+
+        /// <summary>
+        /// Write uniform data for a section at the given slot index in the dynamic ring buffer.
+        /// Call this for each visible section before rendering. After writing all sections,
+        /// call FlushDynamicUniforms() once, then DrawSectionDynamic() per section.
+        /// </summary>
+        /// <param name="slotIndex">Index into the ring buffer (0 to maxSections-1).</param>
+        public void WriteDynamicUniforms(
+            int slotIndex,
+            GpuMatrix4x4 mvp,
+            Vector3 sectionOffset,
+            float voxelSize,
+            Vector3 fogColor,
+            float fogDensity,
+            Vector3 ambientColor,
+            float time,
+            Vector3 cameraWorldPos)
+        {
+            if (_dynamicStagingBuffer == null) return;
+
+            var data = new UniformData
+            {
+                MVP = mvp,
+                SectionOffset = sectionOffset,
+                VoxelSize = voxelSize,
+                FogColor = fogColor,
+                FogDensity = fogDensity,
+                AmbientColor = ambientColor,
+                Time = time,
+                CameraWorldPos = cameraWorldPos,
+            };
+
+            int byteOffset = slotIndex * DynamicUniformAlignment;
+            unsafe
+            {
+                fixed (byte* ptr = &_dynamicStagingBuffer[byteOffset])
+                {
+                    *(UniformData*)ptr = data;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Upload all staged dynamic uniforms to the GPU in a single WriteBuffer call.
+        /// Call after WriteDynamicUniforms() for all visible sections, before DrawSectionDynamic().
+        /// </summary>
+        /// <param name="sectionCount">Number of sections written (uploads only the used portion).</param>
+        public void FlushDynamicUniforms(int sectionCount)
+        {
+            if (_dynamicUniformBuffer == null || _queue == null || _dynamicStagingBuffer == null) return;
+
+            int byteCount = sectionCount * DynamicUniformAlignment;
+            if (byteCount <= 0) return;
+
+            // Upload only the used portion of the staging buffer
+            var uploadSpan = new byte[byteCount];
+            Buffer.BlockCopy(_dynamicStagingBuffer, 0, uploadSpan, 0, byteCount);
+            _queue.WriteBuffer(_dynamicUniformBuffer, 0, uploadSpan);
+        }
+
+        /// <summary>
+        /// Draw a section using dynamic uniform offsets. The pipeline and bind group are set with
+        /// the dynamic offset pointing to the section's uniform slot in the ring buffer.
+        /// Use within a single render pass for all sections - no per-section Submit needed.
+        /// </summary>
+        /// <param name="pass">Active render pass encoder.</param>
+        /// <param name="quadBuffer">GPU buffer containing packed quads for this section.</param>
+        /// <param name="quadCount">Number of quads to draw.</param>
+        /// <param name="slotIndex">Uniform ring buffer slot index (same as passed to WriteDynamicUniforms).</param>
+        /// <param name="quadOffset">Byte offset into the quad buffer (for shared buffers).</param>
+        public void DrawSectionDynamic(GPURenderPassEncoder pass, GPUBuffer quadBuffer, int quadCount, int slotIndex, ulong quadOffset = 0)
+        {
+            if (_dynamicPipeline == null) return;
+
+            var bindGroup = GetOrCreateDynamicBindGroup(quadBuffer, quadOffset);
+            if (bindGroup == null) return;
+
+            uint dynamicOffset = (uint)(slotIndex * DynamicUniformAlignment);
+
+            pass.SetPipeline(_dynamicPipeline);
+            pass.SetBindGroup(0, bindGroup, new uint[] { dynamicOffset });
+            pass.Draw((uint)(quadCount * 6), 1, 0, 0);
+        }
+
+        private GPUBindGroup? GetOrCreateDynamicBindGroup(GPUBuffer quadBuffer, ulong offset)
+        {
+            var key = quadBuffer.GetHashCode() + (nint)offset;
+            if (_dynamicBindGroupCache.TryGetValue(key, out var existing))
+                return existing;
+
+            if (_device == null || _dynamicBindGroupLayout == null ||
+                _dynamicUniformBuffer == null || _colorBuffer == null)
+                return null;
+
+            var bg = _device.CreateBindGroup(new GPUBindGroupDescriptor
+            {
+                Layout = _dynamicBindGroupLayout,
+                Entries = new GPUBindGroupEntry[]
+                {
+                    new()
+                    {
+                        Binding = 0,
+                        Resource = new GPUBufferBinding
+                        {
+                            Buffer = _dynamicUniformBuffer,
+                            Size = 128, // sizeof(UniformData) - required for dynamic offset bindings
+                        },
+                    },
+                    new() { Binding = 1, Resource = new GPUBufferBinding { Buffer = quadBuffer, Offset = offset } },
+                    new() { Binding = 2, Resource = new GPUBufferBinding { Buffer = _colorBuffer } },
+                },
+            });
+
+            _dynamicBindGroupCache[key] = bg;
+            return bg;
         }
 
         /// <summary>
@@ -280,12 +554,16 @@ namespace SpawnDev.VoxelEngine.Rendering
             return bg;
         }
 
-        /// <summary>Clear the bind group cache (call when quad buffers are reallocated).</summary>
+        /// <summary>Clear all bind group caches (call when quad buffers are reallocated).</summary>
         public void InvalidateBindGroups()
         {
             foreach (var bg in _bindGroupCache.Values)
                 bg.Dispose();
             _bindGroupCache.Clear();
+
+            foreach (var bg in _dynamicBindGroupCache.Values)
+                bg.Dispose();
+            _dynamicBindGroupCache.Clear();
         }
 
         public void Dispose()
@@ -296,6 +574,11 @@ namespace SpawnDev.VoxelEngine.Rendering
             _colorBuffer?.Destroy();
             _colorBuffer?.Dispose();
             _pipeline?.Dispose();
+            _dynamicUniformBuffer?.Destroy();
+            _dynamicUniformBuffer?.Dispose();
+            _dynamicPipeline?.Dispose();
+            _dynamicBindGroupLayout?.Dispose();
+            _dynamicStagingBuffer = null;
         }
     }
 }
