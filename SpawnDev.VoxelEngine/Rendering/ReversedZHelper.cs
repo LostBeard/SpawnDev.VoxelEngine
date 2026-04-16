@@ -101,15 +101,15 @@ namespace SpawnDev.VoxelEngine.Rendering
         public static Matrix4x4 CreateReversedOrthographic(float width, float height, float zNear, float zFar)
         {
             // Reversed-Z orthographic: near->1, far->0.
-            // Standard maps z_ndc = (z - near)/(far - near) = near->0, far->1
-            // Reversed maps z_ndc = (z - far)/(near - far) = near->1, far->0
-            // Row-major (System.Numerics: clipPos = worldPos * M, z is negative in view space)
-            float rangeInv = 1f / (zNear - zFar);
+            // View-space Z is negative (looking down -Z). Input at near plane: z = -zNear.
+            // Want: (-zNear)*M33 + M43 = 1, (-zFar)*M33 + M43 = 0
+            // Solving: M33 = 1/(zFar-zNear), M43 = zFar/(zFar-zNear)
+            float range = zFar - zNear;
             return new Matrix4x4(
                 2f / width, 0, 0, 0,
                 0, 2f / height, 0, 0,
-                0, 0, rangeInv, 0,
-                0, 0, zFar * rangeInv, 1);
+                0, 0, 1f / range, 0,
+                0, 0, zFar / range, 1);
         }
 
         /// <summary>
@@ -119,14 +119,14 @@ namespace SpawnDev.VoxelEngine.Rendering
         public static Matrix4x4 CreateReversedOrthographicOffCenter(
             float left, float right, float bottom, float top, float zNear, float zFar)
         {
-            float rangeInv = 1f / (zNear - zFar);
+            float range = zFar - zNear;
             return new Matrix4x4(
                 2f / (right - left), 0, 0, 0,
                 0, 2f / (top - bottom), 0, 0,
-                0, 0, rangeInv, 0,
+                0, 0, 1f / range, 0,
                 -(right + left) / (right - left),
                 -(top + bottom) / (top - bottom),
-                zFar * rangeInv, 1);
+                zFar / range, 1);
         }
 
         /// <summary>WebGPU depth format for reversed-Z.</summary>
