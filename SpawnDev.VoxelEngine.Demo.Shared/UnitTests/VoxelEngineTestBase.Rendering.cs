@@ -333,9 +333,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var pixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), new Vector3(8, 10, 8),
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
 
-            var (r, g, b, a) = GetPixel(pixels, 64, 32, 32);
+            var (r, g, b, a) = GetPixel(pixels, 32, 16, 16);
             if (r < 30 || g < 30 || a < 128)
                 throw new Exception(
                     $"Center pixel ({r},{g},{b},{a}) - expected lit gray block, not black. " +
@@ -356,10 +356,10 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var pixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, view * proj, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), new Vector3(8, 10, 8),
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
 
             // Center pixel should be grayish (stone = 0.5,0.5,0.5 * lighting)
-            var (r, g, b, a) = GetPixel(pixels, 64, 32, 32);
+            var (r, g, b, a) = GetPixel(pixels, 32, 16, 16);
 
             // Should NOT be black (background)
             if (r < 20 && g < 20 && b < 20)
@@ -411,7 +411,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 var pixels = await RenderStandardAndReadBack(device, queue, pipeline,
                     quads, view * proj, Vector3.Zero,
                     new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                    64, 64, new Vector3(0, 0, 0));
+                    32, 32, new Vector3(0, 0, 0));
 
                 int rendered = CountNonBackgroundPixels(pixels);
                 if (rendered < 5)
@@ -445,15 +445,15 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var pixelsNoFog = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, vp, Vector3.Zero,
                 fogColor, 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
-            var (r0, g0, b0, _) = GetPixel(pixelsNoFog, 64, 32, 32);
+                32, 32, new Vector3(0, 0, 0));
+            var (r0, g0, b0, _) = GetPixel(pixelsNoFog, 32, 16, 16);
 
             // Render with HEAVY fog
             var pixelsHeavyFog = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, vp, Vector3.Zero,
                 fogColor, 0.5f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
-            var (r1, g1, b1, _) = GetPixel(pixelsHeavyFog, 64, 32, 32);
+                32, 32, new Vector3(0, 0, 0));
+            var (r1, g1, b1, _) = GetPixel(pixelsHeavyFog, 32, 16, 16);
 
             // With heavy fog, the pixel should be pulled toward the fog color (0.5 = 128).
             // The no-fog pixel should differ from the heavy-fog pixel.
@@ -483,7 +483,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             pipeline.Init(device, queue, "bgra8unorm");
             pipeline.InitDynamic(16);
 
-            int width = 128, height = 128;
+            int width = 32, height = 32;
             var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, width, height);
             try
             {
@@ -525,7 +525,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             pipeline.Init(device, queue, "bgra8unorm");
             pipeline.InitDynamic(8);
 
-            int width = 128, height = 128;
+            int width = 32, height = 32;
             var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, width, height);
             try
             {
@@ -595,13 +595,13 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             // Render at origin
             var pixels0 = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, vp, Vector3.Zero, new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
             int rendered0 = CountNonBackgroundPixels(pixels0);
 
             // Render with sectionOffset far away from camera view
             var pixelsFar = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, vp, new Vector3(100, 0, 100), new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
             int renderedFar = CountNonBackgroundPixels(pixelsFar);
 
             if (rendered0 < 10)
@@ -623,7 +623,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             pipeline.Init(device, queue, "bgra8unorm");
             pipeline.InitDynamic(4);
 
-            int width = 128, height = 128;
+            int width = 32, height = 32;
             var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, width, height);
             try
             {
@@ -688,7 +688,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             pipeline.Init(device, queue, "bgra8unorm");
             pipeline.InitDynamic(4);
 
-            int width = 64, height = 64;
+            int width = 32, height = 32;
             var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, width, height);
             try
             {
@@ -776,9 +776,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 var pixels = await RenderStandardAndReadBack(device, queue, pipeline,
                     quads, vp, Vector3.Zero,
                     new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                    64, 64, new Vector3(0, 0, 0));
+                    32, 32, new Vector3(0, 0, 0));
 
-                var (r, g, b, a) = GetPixel(pixels, 64, 32, 32);
+                var (r, g, b, a) = GetPixel(pixels, 32, 16, 16);
                 if (r < 5 && g < 5 && b < 5)
                     throw new Exception($"Block type {blockType}: center pixel is black ({r},{g},{b}) - not rendered");
 
@@ -812,7 +812,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             using var pipeline = new VertexPullPipeline();
             pipeline.Init(device, queue, "bgra8unorm");
 
-            int width = 64, height = 64;
+            int width = 32, height = 32;
             var camPos = new Vector3(8, 20, 8);
             var view = Matrix4x4.CreateLookAt(camPos, new Vector3(8, 0, 8), Vector3.UnitZ);
             var proj = ReversedZHelper.CreateInfinitePerspective(MathF.PI / 2f, 1f, 0.1f);
@@ -824,7 +824,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 farQuads, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
                 width, height, new Vector3(0, 0, 0));
-            var (farR, farG, farB, _) = GetPixel(farPixels, width, 32, 32);
+            var (farR, farG, farB, _) = GetPixel(farPixels, width, width / 2, height / 2);
 
             // Now render BOTH: far block (green) at y=0, close block (stone/gray) at y=5
             // The close block should occlude the far one
@@ -837,7 +837,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 bothQuads, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
                 width, height, new Vector3(0, 0, 0));
-            var (bothR, bothG, bothB, _) = GetPixel(bothPixels, width, 32, 32);
+            var (bothR, bothG, bothB, _) = GetPixel(bothPixels, width, width / 2, height / 2);
 
             // The far-only render should show green (grass)
             if (farG < farR)
@@ -874,8 +874,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var topPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 topQuads, topView * proj, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.3f), new Vector3(8.5f, 15, 8.5f),
-                64, 64, new Vector3(0, 0, 0));
-            var (topR, topG, topB, _) = GetPixel(topPixels, 64, 32, 32);
+                32, 32, new Vector3(0, 0, 0));
+            var (topR, topG, topB, _) = GetPixel(topPixels, 32, 16, 16);
             int topBrightness = topR + topG + topB;
 
             // Render -Y face from below
@@ -884,8 +884,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var botPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 botQuads, botView * proj, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.3f), new Vector3(8.5f, 2, 8.5f),
-                64, 64, new Vector3(0, 0, 0));
-            var (botR, botG, botB, _) = GetPixel(botPixels, 64, 32, 32);
+                32, 32, new Vector3(0, 0, 0));
+            var (botR, botG, botB, _) = GetPixel(botPixels, 32, 16, 16);
             int botBrightness = botR + botG + botB;
 
             if (topBrightness < 30)
@@ -922,9 +922,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 quads, vp, Vector3.Zero,
                 new Vector3(1f, 0f, 0f), 0.3f, // RED fog, high density
                 new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
 
-            var (r, g, b, _) = GetPixel(pixels, 64, 32, 32);
+            var (r, g, b, _) = GetPixel(pixels, 32, 16, 16);
 
             // Some backends may not render via VertexPullPipeline
             if (r == 0 && g == 0 && b == 0)
@@ -1008,7 +1008,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             pipeline.Init(device, queue, "bgra8unorm");
             pipeline.InitDynamic(4);
 
-            int width = 64, height = 64;
+            int width = 32, height = 32;
             var quads = new long[] { PackedQuad.Pack(0, 0, 0, 16, 16, 4, 1) };
             using var quadBuffer = CreateQuadBuffer(device, queue, quads);
 
@@ -1032,7 +1032,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 queue.Submit(new[] { cmd1 });
                 await queue.OnSubmittedWorkDone();
                 var pxNoFog = await ReadBackPixels(device, queue, ct1, width, height);
-                var (nfR, nfG, nfB, _) = GetPixel(pxNoFog, width, 32, 32);
+                var (nfR, nfG, nfB, _) = GetPixel(pxNoFog, width, width / 2, height / 2);
 
                 if (nfR < 20 && nfG < 20 && nfB < 20)
                 {
@@ -1054,7 +1054,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 queue.Submit(new[] { cmd2 });
                 await queue.OnSubmittedWorkDone();
                 var pxRedFog = await ReadBackPixels(device, queue, ct1, width, height);
-                var (rfR, rfG, rfB, _) = GetPixel(pxRedFog, width, 32, 32);
+                var (rfR, rfG, rfB, _) = GetPixel(pxRedFog, width, width / 2, height / 2);
 
                 if (rfR < 20 && rfG < 20 && rfB < 20)
                     throw new Exception($"Red-fog render: center pixel ({rfR},{rfG},{rfB}) is black - block not rendered");
@@ -1094,7 +1094,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var mergedPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 mergedQuads, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
             int mergedCount = CountNonBackgroundPixels(mergedPixels);
 
             // 16 individual 1x1 quads covering the same area (type 1)
@@ -1107,7 +1107,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var individualPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 individualQuads, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
             int individualCount = CountNonBackgroundPixels(individualPixels);
 
             if (mergedCount < 10)
@@ -1123,8 +1123,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                     "Expected similar coverage. Greedy merge may produce different geometry.");
 
             // Colors at center should match
-            var (mr, mg, mb, _) = GetPixel(mergedPixels, 64, 32, 32);
-            var (ir, ig, ib, _) = GetPixel(individualPixels, 64, 32, 32);
+            var (mr, mg, mb, _) = GetPixel(mergedPixels, 32, 16, 16);
+            var (ir, ig, ib, _) = GetPixel(individualPixels, 32, 16, 16);
             int colorDiff = Math.Abs(mr - ir) + Math.Abs(mg - ig) + Math.Abs(mb - ib);
             if (colorDiff > 30)
                 throw new Exception(

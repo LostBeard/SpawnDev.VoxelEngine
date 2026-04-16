@@ -590,8 +590,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var noonPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, vp, Vector3.Zero,
                 noon.FogColor, 0f, noon.AmbientColor, camPos,
-                64, 64, new Vector3(0));
-            var (nr, ng, nb, _) = GetPixel(noonPixels, 64, 32, 32);
+                32, 32, new Vector3(0));
+            var (nr, ng, nb, _) = GetPixel(noonPixels, 32, 16, 16);
             int noonBrightness = nr + ng + nb;
 
             // Midnight lighting
@@ -599,8 +599,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var midPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, vp, Vector3.Zero,
                 midnight.FogColor, 0f, midnight.AmbientColor, camPos,
-                64, 64, new Vector3(0));
-            var (mr, mg, mb, _) = GetPixel(midPixels, 64, 32, 32);
+                32, 32, new Vector3(0));
+            var (mr, mg, mb, _) = GetPixel(midPixels, 32, 16, 16);
             int midBrightness = mr + mg + mb;
 
             if (noonBrightness < 30)
@@ -634,16 +634,16 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var cleanPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quadsClean, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0));
-            var (cr, cg, cb, _) = GetPixel(cleanPixels, 64, 32, 32);
+                32, 32, new Vector3(0));
+            var (cr, cg, cb, _) = GetPixel(cleanPixels, 32, 16, 16);
 
             // Render max damaged block (damage=15)
             var quadsDamaged = new long[] { PackedQuad.Pack(0, 0, 0, 16, 16, 4, 1, 15) };
             var damagedPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quadsDamaged, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0));
-            var (dr, dg, db, _) = GetPixel(damagedPixels, 64, 32, 32);
+                32, 32, new Vector3(0));
+            var (dr, dg, db, _) = GetPixel(damagedPixels, 32, 16, 16);
 
             if (cr < 20 && cg < 20 && cb < 20)
                 throw new Exception($"Clean block ({cr},{cg},{cb}) not rendered");
@@ -679,8 +679,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var noAOPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quadsNoAO, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0));
-            var (noR, noG, noB, _) = GetPixel(noAOPixels, 64, 32, 32);
+                32, 32, new Vector3(0));
+            var (noR, noG, noB, _) = GetPixel(noAOPixels, 32, 16, 16);
             int noAOBrightness = noR + noG + noB;
 
             // Render block with MAX AO (ao=0xFF, all corners maximally occluded = 0.4 multiplier)
@@ -688,8 +688,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var maxAOPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quadsMaxAO, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0));
-            var (aoR, aoG, aoB, _) = GetPixel(maxAOPixels, 64, 32, 32);
+                32, 32, new Vector3(0));
+            var (aoR, aoG, aoB, _) = GetPixel(maxAOPixels, 32, 16, 16);
             int maxAOBrightness = aoR + aoG + aoB;
 
             if (noAOBrightness < 30)
@@ -724,16 +724,16 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var opaquePixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 opaqueQuads, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 1)); // blue background
-            var (or_, og, ob, _) = GetPixel(opaquePixels, 64, 32, 32);
+                32, 32, new Vector3(0, 0, 1)); // blue background
+            var (or_, og, ob, _) = GetPixel(opaquePixels, 32, 16, 16);
 
             // Render semi-transparent block (type 7 = glass, alpha 0.5) on blue background
             var transQuads = new long[] { PackedQuad.Pack(0, 0, 0, 16, 16, 4, 7) };
             var transPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 transQuads, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 1)); // blue background
-            var (tr, tg, tb, _) = GetPixel(transPixels, 64, 32, 32);
+                32, 32, new Vector3(0, 0, 1)); // blue background
+            var (tr, tg, tb, _) = GetPixel(transPixels, 32, 16, 16);
 
             if (or_ < 20 && og < 20 && ob < 20)
                 throw new Exception($"Opaque block ({or_},{og},{ob}) not rendered");
@@ -804,7 +804,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var pixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, vp, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
 
             int rendered = CountNonBackgroundPixels(pixels);
             if (rendered < 10)
@@ -818,7 +818,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var perspPixels = await RenderStandardAndReadBack(device, queue, pipeline,
                 quads, perspVP, Vector3.Zero,
                 new Vector3(0), 0f, new Vector3(0.5f), camPos,
-                64, 64, new Vector3(0, 0, 0));
+                32, 32, new Vector3(0, 0, 0));
             int perspRendered = CountNonBackgroundPixels(perspPixels);
 
             // Both should render something, but pixel counts will differ
