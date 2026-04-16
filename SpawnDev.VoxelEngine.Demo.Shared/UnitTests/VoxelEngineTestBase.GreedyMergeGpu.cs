@@ -135,13 +135,18 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 
             var mergeKernel = accelerator.LoadAutoGroupedStreamKernel<
                 Index2D, ArrayView<long>, ArrayView<int>, ArrayView<long>, ArrayView<int>,
-                int, int, int>(GreedyMergeKernels.GreedyMergeKernel);
+                int, int, int, int>(GreedyMergeKernels.GreedyMergeKernel);
 
-            mergeKernel(new Index2D(maxMergeLayer, 6),
+            // Dispatch 1: faces 0-3 (perpendicular planes)
+            mergeKernel(new Index2D(chunkXZ, 4),
                 gpuFaceMasks.View, gpuBlocks.View, gpuOutputQuads.View, gpuQuadCounter.View,
-                chunkXZ, height, paddedXZ);
+                chunkXZ, height, paddedXZ, 0);
+            await accelerator.SynchronizeAsync();
 
-            // Synchronize before readback (required for browser backends)
+            // Dispatch 2: faces 4-5 (+Y/-Y, XZ plane merge, race-free)
+            mergeKernel(new Index2D(height, 2),
+                gpuFaceMasks.View, gpuBlocks.View, gpuOutputQuads.View, gpuQuadCounter.View,
+                chunkXZ, height, paddedXZ, 4);
             await accelerator.SynchronizeAsync();
             var counterResult = await gpuQuadCounter.CopyToHostAsync();
             int gpuQuadCount = counterResult[0];

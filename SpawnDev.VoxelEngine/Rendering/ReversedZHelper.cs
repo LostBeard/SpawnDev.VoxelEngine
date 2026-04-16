@@ -87,6 +87,48 @@ namespace SpawnDev.VoxelEngine.Rendering
             return num / den;
         }
 
+        /// <summary>
+        /// Create a reversed-Z orthographic projection matrix.
+        /// Near maps to Z=1, far maps to Z=0.
+        ///
+        /// Used for: editor mode (top-down), minimap rendering, shadow maps
+        /// (directional sun shadows), AR tabletop diorama view.
+        /// </summary>
+        /// <param name="width">View width in world units.</param>
+        /// <param name="height">View height in world units.</param>
+        /// <param name="zNear">Near clip plane distance.</param>
+        /// <param name="zFar">Far clip plane distance.</param>
+        public static Matrix4x4 CreateReversedOrthographic(float width, float height, float zNear, float zFar)
+        {
+            // Reversed-Z orthographic: near->1, far->0.
+            // Standard maps z_ndc = (z - near)/(far - near) = near->0, far->1
+            // Reversed maps z_ndc = (z - far)/(near - far) = near->1, far->0
+            // Row-major (System.Numerics: clipPos = worldPos * M, z is negative in view space)
+            float rangeInv = 1f / (zNear - zFar);
+            return new Matrix4x4(
+                2f / width, 0, 0, 0,
+                0, 2f / height, 0, 0,
+                0, 0, rangeInv, 0,
+                0, 0, zFar * rangeInv, 1);
+        }
+
+        /// <summary>
+        /// Create a reversed-Z orthographic projection with explicit bounds.
+        /// Near maps to Z=1, far maps to Z=0.
+        /// </summary>
+        public static Matrix4x4 CreateReversedOrthographicOffCenter(
+            float left, float right, float bottom, float top, float zNear, float zFar)
+        {
+            float rangeInv = 1f / (zNear - zFar);
+            return new Matrix4x4(
+                2f / (right - left), 0, 0, 0,
+                0, 2f / (top - bottom), 0, 0,
+                0, 0, rangeInv, 0,
+                -(right + left) / (right - left),
+                -(top + bottom) / (top - bottom),
+                zFar * rangeInv, 1);
+        }
+
         /// <summary>WebGPU depth format for reversed-Z.</summary>
         public const string DepthFormat = "depth32float";
 

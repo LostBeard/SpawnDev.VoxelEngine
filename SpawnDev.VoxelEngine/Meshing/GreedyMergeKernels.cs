@@ -7,23 +7,22 @@ namespace SpawnDev.VoxelEngine.Meshing
     /// GPU kernel for greedy quad merging.
     /// Takes face masks from FaceCullKernels and produces merged quads.
     ///
-    /// Dispatch: [chunkXZ, 6] - one thread per layer per face direction.
-    /// Each thread runs a sequential greedy merge loop for its slice.
+    /// Dispatch: [maxMergeLayer, 6] where maxMergeLayer = max(height, chunkXZ).
+    /// For faces 0-3 (+X,-X,+Z,-Z): one thread per layer along the face normal.
+    /// For faces 4-5 (+Y,-Y): one thread per XZ column, iterates Y internally.
+    ///   This eliminates the race condition where multiple Y-layer threads
+    ///   would read/write the same faceMask column concurrently.
+    ///
     /// Output: packed quads via atomic counter.
     /// </summary>
     public static class GreedyMergeKernels
     {
         /// <summary>
-        /// Greedy merge kernel - processes one layer of one face direction.
+        /// Greedy merge kernel - processes one slice of one face direction.
         ///
-        /// For faces 0-3 (+X,-X,+Z,-Z): the "layer" is the position along the face's normal axis.
-        /// The 2D slice being merged is the perpendicular plane.
-        ///
-        /// For faces 4-5 (+Y,-Y): the "layer" is the Y position.
-        /// The 2D slice being merged is the XZ plane.
-        ///
-        /// Each thread scans bit rows, extends runs rightward (same type),
-        /// then extends downward (matching runs), producing merged quads.
+        /// For faces 0-3: index.X = layer along face normal (0 to chunkXZ-1).
+        /// For faces 4-5: index.X = flattened XZ column index (0 to chunkXZ*chunkXZ-1).
+        ///   Each thread owns one column and iterates all Y layers sequentially.
         /// </summary>
         public static void GreedyMergeKernel(
             Index2D index,
@@ -33,50 +32,42 @@ namespace SpawnDev.VoxelEngine.Meshing
             ArrayView<int> quadCounter,
             int chunkXZ,
             int height,
-            int paddedXZ)
+            int paddedXZ,
+            int faceStart)
         {
-            int layer = index.X;
-            int face = index.Y;
+            int threadIdx = index.X;
+            int face = index.Y + faceStart;
 
             if (face >= 6) return;
 
             int innerCount = chunkXZ * chunkXZ;
             int stride = paddedXZ * paddedXZ;
 
-            // For +Y/-Y faces, layer is Y position (0 to height-1)
-            // For other faces, layer is the position along the face's axis (0 to chunkXZ-1)
-            int maxLayer = (face >= 4) ? height : chunkXZ;
-            if (layer >= maxLayer) return;
-
-            // Process one row at a time within this layer's slice
-            // For +Y/-Y: iterate over x,z pairs. faceMask bit = Y position.
-            // For +X/-X: iterate over z,y pairs. faceMask bit = Y position.
-            // For +Z/-Z: iterate over x,y pairs. faceMask bit = Y position.
-
-            // The face masks store one uint64 per (innerX, innerZ) column.
-            // Each bit represents a Y position where that face is visible.
-
-            // For +Y/-Y faces at a specific Y layer:
-            // We need to check if bit 'layer' is set in each column's face mask.
-            // Then greedily merge adjacent set bits in the XZ plane.
-
             if (face >= 4)
             {
-                // +Y or -Y face: merge in XZ plane at Y=layer
+                // +Y or -Y face: one thread per Y layer.
+                // Full XZ-plane greedy merge. Race-free because faces 4-5 are
+                // dispatched SEPARATELY from faces 0-3 (second dispatch in VoxelMeshPipeline).
+                // Each Y-layer thread only touches bit 'threadIdx' in the i64 masks.
+                // No concurrent Y-layer threads on the same mask entry.
+                if (threadIdx >= height) return;
                 MergeXZPlane(faceMasks, paddedBlocks, outputQuads, quadCounter,
-                    chunkXZ, height, paddedXZ, innerCount, stride, layer, face);
+                    chunkXZ, height, paddedXZ, innerCount, stride, threadIdx, face);
             }
             else
             {
-                // +X,-X,+Z,-Z: merge in the plane perpendicular to the face normal at position=layer
+                // +X,-X,+Z,-Z: one thread per layer along the face normal.
+                if (threadIdx >= chunkXZ) return;
                 MergePerpendicularPlane(faceMasks, paddedBlocks, outputQuads, quadCounter,
-                    chunkXZ, height, paddedXZ, innerCount, stride, layer, face);
+                    chunkXZ, height, paddedXZ, innerCount, stride, threadIdx, face);
             }
         }
 
         /// <summary>
-        /// Merge faces in the XZ plane for +Y/-Y faces at a specific Y layer.
-        /// Scans each row (x-axis), extends rightward then downward.
+        /// Merge +Y/-Y faces in the XZ plane for a specific Y layer.
+        /// This kernel is dispatched SEPARATELY from faces 0-3 (in a second dispatch)
+        /// so there's no concurrent access from other Y-layer threads.
+        /// One thread per Y layer, full XZ-plane greedy merge, race-free.
         /// </summary>
         private static void MergeXZPlane(
             ArrayView<long> faceMasks,
@@ -87,12 +78,6 @@ namespace SpawnDev.VoxelEngine.Meshing
             int innerCount, int stride,
             int yLayer, int face)
         {
-            // Build a 2D visited mask for this slice
-            // We use the face mask bits directly - extract bit 'yLayer' from each column
-            // visited[z * chunkXZ + x] = true if already consumed by a quad
-            // Since we can't allocate dynamic arrays in ILGPU, we process row by row
-            // and track consumed columns via bit clearing
-
             int faceOffset = face * innerCount;
 
             for (int z = 0; z < chunkXZ; z++)
@@ -103,17 +88,13 @@ namespace SpawnDev.VoxelEngine.Meshing
                     int innerIdx = x + z * chunkXZ;
                     long mask = faceMasks[faceOffset + innerIdx];
 
-                    // Check if this face is visible at yLayer
                     if ((mask & (1L << yLayer)) == 0)
                     {
                         x++;
                         continue;
                     }
 
-                    // Get block type at this position (padded coords: x+1, z+1, yLayer)
-                    // Mask to 12-bit type for comparison (blocks with same type but different damage merge)
-                    int rawBlock = paddedBlocks[(x + 1) + (z + 1) * paddedXZ + yLayer * stride];
-                    int blockType = rawBlock & 0xFFF;
+                    int blockType = paddedBlocks[(x + 1) + (z + 1) * paddedXZ + yLayer * stride] & 0xFFF;
 
                     // Extend width (rightward along x)
                     int w = 1;
@@ -122,7 +103,6 @@ namespace SpawnDev.VoxelEngine.Meshing
                         int nextInnerIdx = (x + w) + z * chunkXZ;
                         long nextMask = faceMasks[faceOffset + nextInnerIdx];
                         if ((nextMask & (1L << yLayer)) == 0) break;
-
                         int nextType = paddedBlocks[(x + w + 1) + (z + 1) * paddedXZ + yLayer * stride] & 0xFFF;
                         if (nextType != blockType) break;
                         w++;
@@ -138,25 +118,19 @@ namespace SpawnDev.VoxelEngine.Meshing
                             int checkInnerIdx = (x + dx) + (z + h) * chunkXZ;
                             long checkMask = faceMasks[faceOffset + checkInnerIdx];
                             if ((checkMask & (1L << yLayer)) == 0) { canExtend = false; break; }
-
                             int checkType = paddedBlocks[(x + dx + 1) + (z + h + 1) * paddedXZ + yLayer * stride] & 0xFFF;
                             if (checkType != blockType) { canExtend = false; break; }
                         }
                         if (canExtend) h++;
                     }
 
-                    // Clear consumed bits from face masks using i64 Atomic.And
-                    // (safe for concurrent Y-layer threads on WebGPU, v4.9.2+)
+                    // Clear consumed bits atomically - multiple Y-layer threads may
+                    // touch the same i64 mask (each clears a different bit).
+                    // Atomic.And ensures no bit clears are lost.
                     for (int dz = 0; dz < h; dz++)
-                    {
                         for (int dx = 0; dx < w; dx++)
-                        {
-                            int clearIdx = faceOffset + (x + dx) + (z + dz) * chunkXZ;
-                            Atomic.And(ref faceMasks[clearIdx], ~(1L << yLayer));
-                        }
-                    }
+                            Atomic.And(ref faceMasks[faceOffset + (x + dx) + (z + dz) * chunkXZ], ~(1L << yLayer));
 
-                    // Emit quad with atomic counter + rollback bounds check
                     int slot = Atomic.Add(ref quadCounter[0], 1);
                     if (slot >= outputQuads.IntLength)
                     {

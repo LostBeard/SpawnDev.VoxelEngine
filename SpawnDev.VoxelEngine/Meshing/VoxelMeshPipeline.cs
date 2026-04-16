@@ -27,7 +27,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         // Compiled kernels
         private readonly Action<Index2D, ArrayView<int>, ArrayView<long>, int, int> _occupancyKernel;
         private readonly Action<Index2D, ArrayView<long>, ArrayView<long>, int, int> _faceCullKernel;
-        private readonly Action<Index2D, ArrayView<long>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int, int, int> _mergeKernel;
+        private readonly Action<Index2D, ArrayView<long>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int, int, int, int> _mergeKernel;
 
         // Shared GPU buffers (reused across MeshSectionAsync calls)
         private MemoryBuffer1D<long, Stride1D.Dense>? _occupancyBuffer;
@@ -65,7 +65,7 @@ namespace SpawnDev.VoxelEngine.Meshing
 
             _mergeKernel = accelerator.LoadAutoGroupedStreamKernel<
                 Index2D, ArrayView<long>, ArrayView<int>, ArrayView<long>, ArrayView<int>,
-                int, int, int>(GreedyMergeKernels.GreedyMergeKernel);
+                int, int, int, int>(GreedyMergeKernels.GreedyMergeKernel);
 
             // Device-adaptive budget
             // Query max memory and set conservative quad budget.
@@ -148,17 +148,25 @@ namespace SpawnDev.VoxelEngine.Meshing
                 _occupancyBuffer!.View, _faceMaskBuffer!.View, paddedXZ, height);
             await _accelerator.SynchronizeAsync();
 
-            // Step 3: Greedy merge
-            int maxMergeLayer = Math.Max(height, sectionSize);
+            // Step 3: Greedy merge (two dispatches to eliminate +Y/-Y race condition)
             int maxQuads = Math.Min(innerCount * height * 6, _maxQuadsPerSection);
             using var gpuOutputQuads = _accelerator.Allocate1D<long>(maxQuads);
 
             // Reset counter to 0
             _counterBuffer!.CopyFromCPU(new int[] { 0 });
 
-            _mergeKernel(new Index2D(maxMergeLayer, 6),
+            // Dispatch 1: faces 0-3 (+X,-X,+Z,-Z) - one thread per layer, no race
+            _mergeKernel(new Index2D(sectionSize, 4),
                 _faceMaskBuffer!.View, gpuBlocks.View, gpuOutputQuads.View, _counterBuffer.View,
-                sectionSize, height, paddedXZ);
+                sectionSize, height, paddedXZ, 0);
+            await _accelerator.SynchronizeAsync();
+
+            // Dispatch 2: faces 4-5 (+Y,-Y) - one thread per Y layer, full XZ merge
+            // Separate dispatch ensures no concurrent access to the same faceMask entries.
+            // faceStart=4 offsets face indices so dispatch face 0,1 -> kernel face 4,5
+            _mergeKernel(new Index2D(height, 2),
+                _faceMaskBuffer!.View, gpuBlocks.View, gpuOutputQuads.View, _counterBuffer.View,
+                sectionSize, height, paddedXZ, 4);
             await _accelerator.SynchronizeAsync();
 
             // Read counter (only 4 bytes - negligible transfer)

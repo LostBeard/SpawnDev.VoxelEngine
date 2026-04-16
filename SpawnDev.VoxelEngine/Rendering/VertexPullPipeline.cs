@@ -1,5 +1,4 @@
 using SpawnDev.BlazorJS.JSObjects;
-using SpawnDev.ILGPU;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -55,14 +54,15 @@ namespace SpawnDev.VoxelEngine.Rendering
 
         /// <summary>
         /// Uniform data layout matching the WGSL Uniforms struct (128 bytes).
-        /// MVP uses GpuMatrix4x4 (column-major) so the row-major to column-major
-        /// conversion is explicit. Callers must use GpuMatrix4x4.FromMatrix4x4()
-        /// to convert .NET's row-major Matrix4x4 before passing to UpdateUniforms.
+        /// MVP uses raw Matrix4x4 - uploading .NET's row-major bytes into WGSL's
+        /// column-major mat4x4 naturally transposes the matrix, which is exactly
+        /// the convention change needed (v*M row-vector -> M*v column-vector).
+        /// Do NOT use GpuMatrix4x4 here - it would double-transpose and break rendering.
         /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct UniformData
         {
-            public GpuMatrix4x4 MVP;        // 64 bytes (column-major, matches WGSL mat4x4<f32>)
+            public Matrix4x4 MVP;           // 64 bytes (row-major, WGSL reads as column-major = implicit transpose)
             public Vector3 SectionOffset;   // 12 bytes
             public float VoxelSize;         // 4 bytes
             public Vector3 FogColor;        // 12 bytes
@@ -178,7 +178,7 @@ namespace SpawnDev.VoxelEngine.Rendering
                 Primitive = new GPUPrimitiveState
                 {
                     Topology = GPUPrimitiveTopology.TriangleList,
-                    CullMode = GPUCullMode.Back,
+                    CullMode = GPUCullMode.None,
                     FrontFace = GPUFrontFace.CCW,
                 },
                 DepthStencil = new GPUDepthStencilState
@@ -192,11 +192,12 @@ namespace SpawnDev.VoxelEngine.Rendering
 
         /// <summary>
         /// Upload uniform data for the current frame/section.
-        /// MVP must be a GpuMatrix4x4 (column-major). Use GpuMatrix4x4.FromMatrix4x4()
-        /// to convert from .NET's row-major Matrix4x4.
+        /// MVP is a raw .NET Matrix4x4 (row-major). The row-major to column-major
+        /// conversion happens implicitly when WGSL reads the bytes as mat4x4.
+        /// Do NOT pre-transpose with GpuMatrix4x4 - that would double-transpose.
         /// </summary>
         public void UpdateUniforms(
-            GpuMatrix4x4 mvp,
+            Matrix4x4 mvp,
             Vector3 sectionOffset,
             float voxelSize,
             Vector3 fogColor,
@@ -206,6 +207,12 @@ namespace SpawnDev.VoxelEngine.Rendering
             Vector3 cameraWorldPos)
         {
             if (_uniformBuffer == null || _queue == null) return;
+
+            // Clear standard bind group cache each update - quad buffers may have been
+            // destroyed since last frame. Same fix as FlushDynamicUniforms for dynamic mode.
+            foreach (var bg in _bindGroupCache.Values)
+                bg.Dispose();
+            _bindGroupCache.Clear();
 
             var data = new UniformData
             {
@@ -345,7 +352,7 @@ namespace SpawnDev.VoxelEngine.Rendering
                 Primitive = new GPUPrimitiveState
                 {
                     Topology = GPUPrimitiveTopology.TriangleList,
-                    CullMode = GPUCullMode.Back,
+                    CullMode = GPUCullMode.None,
                     FrontFace = GPUFrontFace.CCW,
                 },
                 DepthStencil = new GPUDepthStencilState
@@ -361,11 +368,12 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// Write uniform data for a section at the given slot index in the dynamic ring buffer.
         /// Call this for each visible section before rendering. After writing all sections,
         /// call FlushDynamicUniforms() once, then DrawSectionDynamic() per section.
+        /// MVP is a raw .NET Matrix4x4 - do NOT pre-transpose with GpuMatrix4x4.
         /// </summary>
         /// <param name="slotIndex">Index into the ring buffer (0 to maxSections-1).</param>
         public void WriteDynamicUniforms(
             int slotIndex,
-            GpuMatrix4x4 mvp,
+            Matrix4x4 mvp,
             Vector3 sectionOffset,
             float voxelSize,
             Vector3 fogColor,
@@ -401,11 +409,20 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// <summary>
         /// Upload all staged dynamic uniforms to the GPU in a single WriteBuffer call.
         /// Call after WriteDynamicUniforms() for all visible sections, before DrawSectionDynamic().
+        /// Also clears the dynamic bind group cache to prevent stale buffer references -
+        /// quad buffers may be destroyed and recreated between frames (re-meshing).
         /// </summary>
         /// <param name="sectionCount">Number of sections written (uploads only the used portion).</param>
         public void FlushDynamicUniforms(int sectionCount)
         {
             if (_dynamicUniformBuffer == null || _queue == null || _dynamicStagingBuffer == null) return;
+
+            // Clear bind group cache each frame - quad buffers may have been
+            // destroyed since last frame (section re-mesh). Cached bind groups
+            // that reference destroyed buffers cause "used in submit while destroyed" errors.
+            foreach (var bg in _dynamicBindGroupCache.Values)
+                bg.Dispose();
+            _dynamicBindGroupCache.Clear();
 
             int byteCount = sectionCount * DynamicUniformAlignment;
             if (byteCount <= 0) return;
