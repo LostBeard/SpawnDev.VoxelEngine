@@ -46,7 +46,49 @@
 
 ---
 
-## Phase 3: Texture Pipeline
+## Phase 3: SDF + Dual Marching Cubes (Smooth Terrain)
+
+Captain's order: hybrid smooth terrain + blocky building THIS VERSION. Natural terrain uses SDF evaluated on GPU, meshed via Dual Marching Cubes. Player structures use existing greedy mesh. Both coexist in the same world - carve into smooth hillsides, build walls inside with blocks.
+
+### SDF Data
+- [ ] **SDF chunk data structure** - 8-bit or 16-bit fixed-point per voxel alongside PackedBlock. 32x32x32 = 32-64 KB per chunk. Uniform chunks (all solid/air) = near zero.
+- [ ] **SDF storage in ChunkManager** - dual storage: PackedBlock for blocks, SDF grid for terrain
+- [ ] **SDF serialization** - compact format for OPFS region files
+
+### SDF Evaluation (GPU Kernel)
+- [ ] **Noise primitives** - Perlin/Simplex noise, domain warping, fBm
+- [ ] **Uber Noise composition** - 7 composable layers (base terrain, mountains, plateaus, ridges, caves, overhangs, erosion)
+- [ ] **Cave generation** - CSG boolean: `max(-cave_sdf, terrain_sdf)` carves caves from terrain
+- [ ] **Smooth blending** - Inigo Quilez smooth union/subtraction/intersection formulas
+- [ ] **Biome-driven noise params** - different noise weights per biome (mountains vs plains vs coast)
+- [ ] **ILGPU kernel** - embarrassingly parallel, one thread per voxel, all GPU-resident
+
+### Dual Marching Cubes (GPU Kernel Pipeline)
+- [ ] **Cell classification kernel** - mark active cells (cells that cross the isosurface)
+- [ ] **Prefix sum for compaction** - use existing ILGPU Algorithms Scan
+- [ ] **DMC vertex generation kernel** - one thread per active cell, output quads. 150x vertex reduction vs standard MC, inherently crack-free at LOD boundaries.
+- [ ] **Normal computation** - gradient of SDF for smooth per-vertex normals
+- [ ] **Material assignment** - SDF value + depth + slope determines material (rock, dirt, grass, sand)
+
+### Integration
+- [ ] **DMC vertex buffer integration** - wire DMC output into VertexPullPipeline (or separate smooth terrain pipeline)
+- [ ] **Hybrid render pass** - greedy mesh blocks + DMC terrain in same frame
+- [ ] **Triplanar texture projection** - for smooth terrain surfaces (no UV stretching on cliffs)
+- [ ] **SDF terrain modification kernel** - modify SDF values in a sphere (dig/fill). Existing ExplosionKernels as foundation.
+- [ ] **Chunk re-meshing on modification** - re-run DMC on affected chunks after terrain edit
+- [ ] **LOD for SDF terrain** - coarser SDF grid at distance, DMC produces fewer vertices naturally
+
+### Tests
+- [ ] **Unit test: SDF evaluation deterministic** - same seed produces same SDF values
+- [ ] **Unit test: DMC produces manifold mesh** - no T-junctions, correct topology
+- [ ] **Unit test: cave carving CSG** - sphere subtraction creates hole in terrain
+- [ ] **Pixel readback: smooth sphere renders** - SDF sphere at known position, verify circular outline in pixels
+- [ ] **Pixel readback: terrain + block hybrid** - DMC terrain and greedy mesh block in same render, both visible
+- [ ] **Pixel readback: triplanar texturing** - cliff face doesn't stretch
+
+---
+
+## Phase 4: Texture Pipeline
 
 The solid-color renderer works for prototyping but Lost Spawns needs PBR textures for the DayZ aesthetic.
 
@@ -270,7 +312,35 @@ Performance ceiling - squeeze every TFLOP.
 
 ---
 
-## Phase 14: Audio Integration Points
+## Phase 14: Flood Fill Lighting
+
+Every engine with good atmosphere has this. Without it, no interior darkness, no torch illumination. Critical for Lost Spawns DayZ feel.
+
+- [ ] **Light propagation BFS** - flood fill from light sources through transparent/air blocks
+- [ ] **Sky light** - top-down propagation, attenuates through solid blocks
+- [ ] **Block light** - point sources (torches, campfires) with configurable range
+- [ ] **Colored lights** - 32 range levels, color mixing (Vintage Story approach: 16,384 combos)
+- [ ] **Light data storage** - per-block light level in chunk data (4 bits sky + 4 bits block minimum)
+- [ ] **Fragment shader integration** - multiply vertex color by light level
+- [ ] **Light update on block change** - re-propagate affected region when blocks placed/destroyed
+- [ ] **Smooth lighting interpolation** - average light across block face vertices (no hard edges)
+- [ ] **Unit test: torch illuminates room** - place torch in dark room, verify surrounding blocks have light
+- [ ] **Unit test: sky light through window** - transparent block transmits sky light
+- [ ] **Pixel readback: lit block brighter than unlit** - verify light data reaches shader output
+
+## Phase 15: Palette Compression
+
+4x chunk storage reduction. Most sections use fewer than 16 block types.
+
+- [ ] **Palette encoder** - scan section, build local palette of used block types
+- [ ] **Variable bit packing** - 1-4 bits per block when palette is small (1 type = 0 bits, 2 = 1 bit, 4 = 2 bits, 16 = 4 bits)
+- [ ] **Section metadata** - palette + bit width stored in section header
+- [ ] **Decoder** - unpack to full block array for meshing
+- [ ] **OPFS integration** - store compressed sections in region files
+- [ ] **Unit test: roundtrip** - compress then decompress, verify identical data
+- [ ] **Unit test: size reduction** - uniform section compresses to near zero
+
+## Phase 16: Audio Integration Points
 
 VoxelEngine doesn't own audio but needs to provide data for it.
 
@@ -336,11 +406,12 @@ Every visual feature must have a pixel readback test that draws to an offscreen 
 
 | Version | Scope | Gate |
 |---------|-------|------|
-| **v0.5.0** | Phases 1-3 done. Bug fixes, full test coverage, textured rendering. | All visual tests pass with textures. |
-| **v0.7.0** | Phases 4-5 done. Shadows + post-processing. DayZ atmosphere achieved. | Shadow + SSAO pixel tests pass. |
-| **v0.8.0** | Phases 6-8 done. Water, weather, persistence. Playable survival loop. | Water renders, world saves/loads. |
-| **v0.9.0** | Phases 9-11 done. Fluids, procgen, VR. Full feature set. | All planned features implemented. |
-| **v1.0.0** | Phases 12-14 done. Entities, optimizations, audio hooks. Ship-ready. | 100% test pass, performance targets met. |
+| **v0.5.0** | Phases 1-3 done. Bug fixes, test coverage, SDF + DMC smooth terrain. | Smooth terrain renders, hybrid block+smooth works. |
+| **v0.6.0** | Phase 4 done. Texture pipeline (PBR, normal maps, triplanar). | Textured terrain + blocks. |
+| **v0.7.0** | Phases 5-6 done. Shadows + post-processing. DayZ atmosphere. | Shadow + SSAO pixel tests pass. |
+| **v0.8.0** | Phases 7-9 done. Water, weather, persistence. Playable world. | Water renders, world saves/loads. |
+| **v0.9.0** | Phases 10-13 done. Fluids, procgen, VR, entities. Full feature set. | All gameplay features implemented. |
+| **v1.0.0** | Phases 14-16 done. Lighting, compression, optimizations, audio. Ship-ready. | 100% test pass, performance targets met. |
 
 ---
 
