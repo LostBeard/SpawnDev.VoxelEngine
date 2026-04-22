@@ -16,6 +16,17 @@
 - **Bugs fixed today:** double-transpose, buffer lifetime crash, 4/6 face culling, standard bind group cache
 - **Working:** meshing, face culling, greedy merge, frustum culling, visibility graph, LOD, collision, raycasting, structural integrity, terrain gen, biomes, dynamic uniform batching, reversed-Z, per-vertex AO, quality controller, thermal manager, buffer compaction, draw ordering
 
+## Current State (2026-04-17 delta)
+
+Since yesterday's EOD:
+
+- **Task #7 DMC output wired:** COMPLETE (SdfMeshPipeline pipeline stages all GPU-resident)
+- **Task #8 XZ chunk-boundary padding:** COMPLETE (inter-chunk via WorldService.GenerateNeighborBlocksAsync, intra-section via padded slabs in kernel)
+- **Task #11 intra-chunk Y section-boundary:** COMPLETE (yPadMinusSlab/yPadPlusSlab optional params on MeshSectionAsync, 233/233 desktop)
+- **Task #15 SDF + block hybrid:** library contract SHIPPED (VoxelEngineTestBase.HybridRender.cs, uniform layouts binary-compatible, two-pass composite pattern). WebGPU end-to-end BLOCKED on SpawnDev.ILGPU 4.9.2-rc.7 (sub-word LEA codegen fix queued for publish by Geordi today).
+- **SdfRendering_FlatQuad:** FIXED (test geometry mismatch, not a shader bug; quad grown 2x2 -> 8x8, threshold 50 -> 200). Build clean.
+- **Blocked items (WebGPU):** 16 SDF/DMC tests + HybridRender end-to-end, all awaiting rc.7 + test authority.
+
 ---
 
 ## Phase 1: Fix Known Bugs
@@ -51,39 +62,39 @@
 Captain's order: hybrid smooth terrain + blocky building THIS VERSION. Natural terrain uses SDF evaluated on GPU, meshed via Dual Marching Cubes. Player structures use existing greedy mesh. Both coexist in the same world - carve into smooth hillsides, build walls inside with blocks.
 
 ### SDF Data
-- [ ] **SDF chunk data structure** - 8-bit or 16-bit fixed-point per voxel alongside PackedBlock. 32x32x32 = 32-64 KB per chunk. Uniform chunks (all solid/air) = near zero.
-- [ ] **SDF storage in ChunkManager** - dual storage: PackedBlock for blocks, SDF grid for terrain
+- [x] **SDF chunk data structure** - `SpawnDev.VoxelEngine/SDF/SdfChunk.cs` uses 16-bit fixed-point at scale 256 (~0.004 precision, -128..+127 range). 32x32x32 = 64 KB per chunk.
+- [ ] **SDF storage in ChunkManager** - dual storage: PackedBlock for blocks, SDF grid for terrain (Lost Spawns WorldService not yet SDF-aware)
 - [ ] **SDF serialization** - compact format for OPFS region files
 
 ### SDF Evaluation (GPU Kernel)
-- [ ] **Noise primitives** - Perlin/Simplex noise, domain warping, fBm
-- [ ] **Uber Noise composition** - 7 composable layers (base terrain, mountains, plateaus, ridges, caves, overhangs, erosion)
-- [ ] **Cave generation** - CSG boolean: `max(-cave_sdf, terrain_sdf)` carves caves from terrain
-- [ ] **Smooth blending** - Inigo Quilez smooth union/subtraction/intersection formulas
+- [x] **Noise primitives** - `SdfNoiseKernels.cs` has Hash3D, ValueNoise3D, FBM, DomainWarpedFBM (GPU-compatible, all backends)
+- [x] **Uber Noise composition** - 6 layers in `EvaluateSdfKernel` (base elevation, hills, mountain peaks, fine detail, caves, overhangs)
+- [x] **Cave generation** - Layer 5 via `SdfSmoothSubtract` on 3D density noise
+- [x] **Smooth blending** - `SdfSmoothUnion` and `SdfSmoothSubtract` implemented (positive-inside convention, k = blend radius)
 - [ ] **Biome-driven noise params** - different noise weights per biome (mountains vs plains vs coast)
-- [ ] **ILGPU kernel** - embarrassingly parallel, one thread per voxel, all GPU-resident
+- [x] **ILGPU kernel** - `EvaluateSdfKernel` dispatches Index3D, one thread per voxel, embarrassingly parallel
 
 ### Dual Marching Cubes (GPU Kernel Pipeline)
-- [ ] **Cell classification kernel** - mark active cells (cells that cross the isosurface)
-- [ ] **Prefix sum for compaction** - use existing ILGPU Algorithms Scan
-- [ ] **DMC vertex generation kernel** - one thread per active cell, output quads. 150x vertex reduction vs standard MC, inherently crack-free at LOD boundaries.
+- [x] **Cell classification kernel** - `DualMarchingCubesKernels.ClassifyActiveCellsKernel`
+- [x] **Prefix sum for compaction** - wired in `SdfMeshPipeline.MeshSdfAsync`
+- [x] **DMC vertex generation kernel** - `GenerateDualVerticesKernel` + `GenerateQuadsKernel`. Quad output, crack-free at LOD.
 - [ ] **Normal computation** - gradient of SDF for smooth per-vertex normals
 - [ ] **Material assignment** - SDF value + depth + slope determines material (rock, dirt, grass, sand)
 
 ### Integration
-- [ ] **DMC vertex buffer integration** - wire DMC output into VertexPullPipeline (or separate smooth terrain pipeline)
-- [ ] **Hybrid render pass** - greedy mesh blocks + DMC terrain in same frame
+- [ ] **DMC vertex buffer integration** - separate `SdfRenderPipeline` exists; unification with `VertexPullPipeline` not yet decided
+- [~] **Hybrid render pass** - library contract shipped (`VoxelEngineTestBase.HybridRender.cs`, uniform layouts binary-compatible, two-pass composite validated on CPU). WebGPU end-to-end blocked on ILGPU rc.7.
 - [ ] **Triplanar texture projection** - for smooth terrain surfaces (no UV stretching on cliffs)
-- [ ] **SDF terrain modification kernel** - modify SDF values in a sphere (dig/fill). Existing ExplosionKernels as foundation.
-- [ ] **Chunk re-meshing on modification** - re-run DMC on affected chunks after terrain edit
+- [x] **SDF terrain modification kernel** - `ModifySdfSphereKernel` (mode 0 = dig via SmoothSubtract, mode 1 = fill via SmoothUnion)
+- [ ] **Chunk re-meshing on modification** - re-run DMC on affected chunks after terrain edit (consumer-side, not yet wired)
 - [ ] **LOD for SDF terrain** - coarser SDF grid at distance, DMC produces fewer vertices naturally
 
 ### Tests
-- [ ] **Unit test: SDF evaluation deterministic** - same seed produces same SDF values
-- [ ] **Unit test: DMC produces manifold mesh** - no T-junctions, correct topology
-- [ ] **Unit test: cave carving CSG** - sphere subtraction creates hole in terrain
-- [ ] **Pixel readback: smooth sphere renders** - SDF sphere at known position, verify circular outline in pixels
-- [ ] **Pixel readback: terrain + block hybrid** - DMC terrain and greedy mesh block in same render, both visible
+- [x] **Unit test: SDF evaluation deterministic** - `SdfEvaluate_SameSeedSameInput_ProducesIdenticalOutput` (+ DifferentSeeds, DeepUnderground, HighAltitude)
+- [ ] **Unit test: DMC produces manifold mesh** - no T-junctions, correct topology (horizontal plane vertex-count and Y-coord tests exist but no full manifold check)
+- [~] **Unit test: cave carving CSG** - `SdfModifySphere_Dig_CarvesHoleInSolid` covers sphere subtraction. Noise-driven cave layer lacks dedicated test.
+- [~] **Pixel readback: smooth sphere renders** - `SdfRendering_*` tests exist; fixed FlatQuad geometry 2026-04-17; rest blocked on ILGPU rc.7
+- [~] **Pixel readback: terrain + block hybrid** - `HybridRender_BlockAndSdfInSameFrame_BothVisibleTest` written, blocked on ILGPU rc.7
 - [ ] **Pixel readback: triplanar texturing** - cliff face doesn't stretch
 
 ---

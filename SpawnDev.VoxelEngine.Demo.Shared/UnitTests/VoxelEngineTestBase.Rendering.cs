@@ -21,23 +21,25 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 
         /// <summary>
         /// Run a test that requires WebGPU rendering (GPUDevice + GPUQueue).
-        /// Throws descriptive exception on non-WebGPU backends so PlaywrightMultiTest
-        /// records it as unsupported rather than a failure.
+        /// Throws UnsupportedTestException on non-WebGPU backends so the test is
+        /// recorded as Skipped rather than silently passing.
         /// </summary>
         private async Task RunWebGPURenderTest(Func<GPUDevice, GPUQueue, Accelerator, Task> test)
         {
             await RunTest(async accelerator =>
             {
-                // WebGPU render tests require a real GPUDevice/GPUQueue.
-                // On non-WebGPU backends (CPU, CUDA, OpenCL, WebGL, Wasm),
-                // skip silently - the test is not applicable to those backends.
+                // WebGPU render tests require a real GPUDevice/GPUQueue. Non-WebGPU backends
+                // (CPU/CUDA/OpenCL/WebGL/Wasm) can't satisfy the precondition - surface that
+                // as an explicit Skip, not a silent pass that looks like a real green.
                 if (accelerator is not WebGPUAccelerator webGpuAccel)
-                    return;
+                    throw new UnsupportedTestException(
+                        $"WebGPU-only render path; backend is {accelerator.GetType().Name}");
 
                 var nativeDevice = webGpuAccel.NativeAccelerator.NativeDevice;
                 var queue = webGpuAccel.NativeAccelerator.Queue;
                 if (nativeDevice == null || queue == null)
-                    return;
+                    throw new UnsupportedTestException(
+                        "WebGPU accelerator has no native device/queue (disposed or partially initialized)");
 
                 await test(nativeDevice, queue, accelerator);
             });

@@ -75,6 +75,53 @@ namespace SpawnDev.VoxelEngine.Meshing
         }
 
         /// <summary>
+        /// Bitwise face culling with Y-neighbor padding. CPU reference for
+        /// FaceCullKernels.FaceCullKernelWithYPad - must produce identical output.
+        /// See that kernel's doc comment for slab semantics. Passing zero-filled
+        /// yPadMinus/yPadPlus arrays reproduces the no-Y-padding FaceCull result.
+        /// </summary>
+        public static long[] FaceCull(long[] occupancy, int paddedXZ, int height,
+            long[] yPadMinus, long[] yPadPlus)
+        {
+            int innerXZ = paddedXZ - 2;
+            int innerCount = innerXZ * innerXZ;
+            var faceMasks = new long[innerCount * 6];
+
+            long pMask = height >= 64 ? ~0L : (1L << height) - 1L;
+
+            for (int b = 1; b < paddedXZ - 1; b++)
+            {
+                for (int a = 1; a < paddedXZ - 1; a++)
+                {
+                    int xzIdx = a + b * paddedXZ;
+                    long col = occupancy[xzIdx] & pMask;
+                    long colPosX = occupancy[(a + 1) + b * paddedXZ];
+                    long colNegX = occupancy[(a - 1) + b * paddedXZ];
+                    long colPosZ = occupancy[a + (b + 1) * paddedXZ];
+                    long colNegZ = occupancy[a + (b - 1) * paddedXZ];
+
+                    long yMinusBit = yPadMinus[xzIdx] & 1L;
+                    long yPlusBit = yPadPlus[xzIdx] & 1L;
+
+                    int innerIdx = (a - 1) + (b - 1) * innerXZ;
+
+                    faceMasks[innerIdx + 0 * innerCount] = col & ~colPosX;
+                    faceMasks[innerIdx + 1 * innerCount] = col & ~colNegX;
+                    faceMasks[innerIdx + 2 * innerCount] = col & ~colPosZ;
+                    faceMasks[innerIdx + 3 * innerCount] = col & ~colNegZ;
+
+                    long neighborAbove = (col >> 1) | (yPlusBit << (height - 1));
+                    faceMasks[innerIdx + 4 * innerCount] = col & ~neighborAbove & pMask;
+
+                    long neighborBelow = (col << 1) | yMinusBit;
+                    faceMasks[innerIdx + 5 * innerCount] = col & ~neighborBelow & pMask;
+                }
+            }
+
+            return faceMasks;
+        }
+
+        /// <summary>
         /// Count total visible faces from face masks.
         /// Each set bit = one visible face.
         /// </summary>

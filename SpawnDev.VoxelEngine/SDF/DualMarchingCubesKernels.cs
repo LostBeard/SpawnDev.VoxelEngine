@@ -173,27 +173,22 @@ namespace SpawnDev.VoxelEngine.SDF
             float ny = (v2 + v3 + v6 + v7) - (v0 + v1 + v4 + v5); // Y gradient
             float nz = (v4 + v5 + v6 + v7) - (v0 + v1 + v2 + v3); // Z gradient
 
-            // Normalize
+            // Normalize gradient to unit-length normal.
+            // Newton-Raphson sqrt: seed with len itself, converges quickly for our typical range (0..12).
             float nlen = nx * nx + ny * ny + nz * nz;
             if (nlen > 0.0001f)
             {
-                // Newton-Raphson inverse sqrt (2 iterations)
-                float invSqrt = nlen;
-                float half = 0.5f * nlen;
-                int bits = 0x5F3759DF - ((int)(nlen * 1f) >> 1); // Quake fast inverse sqrt seed
-                // Simplified: just normalize manually
-                float len = nlen;
-                float guess = len * 0.5f;
-                guess = 0.5f * (guess + len / guess);
-                guess = 0.5f * (guess + len / guess);
-                len = guess;
-                nx /= len;
-                ny /= len;
-                nz /= len;
+                float guess = nlen * 0.5f;
+                guess = 0.5f * (guess + nlen / guess);
+                guess = 0.5f * (guess + nlen / guess);
+                guess = 0.5f * (guess + nlen / guess);
+                nx /= guess;
+                ny /= guess;
+                nz /= guess;
             }
 
-            // Store vertex position and normal (6 floats per vertex)
-            int outIdx = i * 6;
+            // Store vertex position and normal (3 floats each, tight packing).
+            int outIdx = i * 3;
             vertexPositions[outIdx + 0] = wx;
             vertexPositions[outIdx + 1] = wy;
             vertexPositions[outIdx + 2] = wz;

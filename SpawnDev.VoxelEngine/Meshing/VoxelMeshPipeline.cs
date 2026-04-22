@@ -26,13 +26,17 @@ namespace SpawnDev.VoxelEngine.Meshing
 
         // Compiled kernels
         private readonly Action<Index2D, ArrayView<int>, ArrayView<long>, int, int> _occupancyKernel;
-        private readonly Action<Index2D, ArrayView<long>, ArrayView<long>, int, int> _faceCullKernel;
+        private readonly Action<Index2D, ArrayView<long>, ArrayView<long>, ArrayView<long>, ArrayView<long>, int, int> _faceCullKernel;
         private readonly Action<Index2D, ArrayView<long>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int, int, int, int> _mergeKernel;
 
         // Shared GPU buffers (reused across MeshSectionAsync calls)
         private MemoryBuffer1D<long, Stride1D.Dense>? _occupancyBuffer;
         private MemoryBuffer1D<long, Stride1D.Dense>? _faceMaskBuffer;
+        private MemoryBuffer1D<long, Stride1D.Dense>? _yPadMinusBuffer;
+        private MemoryBuffer1D<long, Stride1D.Dense>? _yPadPlusBuffer;
         private MemoryBuffer1D<int, Stride1D.Dense>? _counterBuffer;
+        private long[]? _yPadMinusStaging;
+        private long[]? _yPadPlusStaging;
         private int _lastPaddedXZ;
         private int _lastInnerCount;
 
@@ -60,8 +64,8 @@ namespace SpawnDev.VoxelEngine.Meshing
                 FaceCullKernels.BuildOccupancyKernel);
 
             _faceCullKernel = accelerator.LoadAutoGroupedStreamKernel<
-                Index2D, ArrayView<long>, ArrayView<long>, int, int>(
-                FaceCullKernels.FaceCullKernel);
+                Index2D, ArrayView<long>, ArrayView<long>, ArrayView<long>, ArrayView<long>, int, int>(
+                FaceCullKernels.FaceCullKernelWithYPad);
 
             _mergeKernel = accelerator.LoadAutoGroupedStreamKernel<
                 Index2D, ArrayView<long>, ArrayView<int>, ArrayView<long>, ArrayView<int>,
@@ -120,7 +124,19 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// <param name="paddedBlocks">Block data with 1-block padding. Size: (sectionSize+2)*(sectionSize+2)*height. Uses PackedBlock.Pack() encoding.</param>
         /// <param name="sectionSize">Interior section size (e.g., 16 for a 16x16 section). Padding adds +2.</param>
         /// <param name="height">Section height in blocks (e.g., 16 for section-based, or 256 for chunk-column).</param>
-        public async Task<MeshResult> MeshSectionAsync(int[] paddedBlocks, int sectionSize, int height)
+        /// <param name="yPadMinusSlab">Optional XZ slice of the -Y-neighbor section at its top layer (y=sectionHeight-1 in that neighbor).
+        /// Size (sectionSize+2)*(sectionSize+2) as int PackedBlock values. When a block is solid (lower 12 bits non-zero)
+        /// at an interior (x,z) position, the corresponding y=0 voxel in THIS section will not emit a -Y face.
+        /// Null = air neighbor (bottom boundary faces remain visible).</param>
+        /// <param name="yPadPlusSlab">Optional XZ slice of the +Y-neighbor section at its bottom layer (y=0 in that neighbor).
+        /// Same format as yPadMinusSlab. Controls whether y=height-1 voxels emit a +Y face.
+        /// Null = air neighbor (top boundary faces remain visible).</param>
+        public async Task<MeshResult> MeshSectionAsync(
+            int[] paddedBlocks,
+            int sectionSize,
+            int height,
+            int[]? yPadMinusSlab = null,
+            int[]? yPadPlusSlab = null)
         {
             if (height > 64)
                 throw new ArgumentOutOfRangeException(nameof(height),
@@ -132,20 +148,36 @@ namespace SpawnDev.VoxelEngine.Meshing
             int innerXZ = sectionSize;
             int innerCount = innerXZ * innerXZ;
 
+            int slabLen = paddedXZ * paddedXZ;
+            if (yPadMinusSlab != null && yPadMinusSlab.Length != slabLen)
+                throw new ArgumentException(
+                    $"yPadMinusSlab length {yPadMinusSlab.Length} does not match (sectionSize+2)^2 = {slabLen}",
+                    nameof(yPadMinusSlab));
+            if (yPadPlusSlab != null && yPadPlusSlab.Length != slabLen)
+                throw new ArgumentException(
+                    $"yPadPlusSlab length {yPadPlusSlab.Length} does not match (sectionSize+2)^2 = {slabLen}",
+                    nameof(yPadPlusSlab));
+
             // Ensure shared intermediate buffers are large enough
             EnsureBuffers(paddedXZ, innerCount, height);
 
             // Upload blocks
             using var gpuBlocks = _accelerator.Allocate1D(paddedBlocks);
 
+            // Step 0: Prepare Y-pad slabs. Bit 0 of each long = solid (lower 12 bits non-zero in the PackedBlock source).
+            UploadYPadSlab(yPadMinusSlab, ref _yPadMinusStaging, _yPadMinusBuffer!, slabLen);
+            UploadYPadSlab(yPadPlusSlab, ref _yPadPlusStaging, _yPadPlusBuffer!, slabLen);
+
             // Step 1: Build occupancy columns
             _occupancyKernel(new Index2D(paddedXZ, paddedXZ),
                 gpuBlocks.View, _occupancyBuffer!.View, paddedXZ, height);
             await _accelerator.SynchronizeAsync();
 
-            // Step 2: Face cull (bitwise)
+            // Step 2: Face cull (bitwise), Y-padded
             _faceCullKernel(new Index2D(paddedXZ, paddedXZ),
-                _occupancyBuffer!.View, _faceMaskBuffer!.View, paddedXZ, height);
+                _occupancyBuffer!.View,
+                _yPadMinusBuffer!.View, _yPadPlusBuffer!.View,
+                _faceMaskBuffer!.View, paddedXZ, height);
             await _accelerator.SynchronizeAsync();
 
             // Step 3: Greedy merge (two dispatches to eliminate +Y/-Y race condition)
@@ -220,10 +252,16 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// </summary>
         private void EnsureBuffers(int paddedXZ, int innerCount, int height)
         {
+            int slabSize = paddedXZ * paddedXZ;
             if (_occupancyBuffer == null || _lastPaddedXZ < paddedXZ)
             {
                 _occupancyBuffer?.Dispose();
-                _occupancyBuffer = _accelerator.Allocate1D<long>(paddedXZ * paddedXZ);
+                _occupancyBuffer = _accelerator.Allocate1D<long>(slabSize);
+
+                _yPadMinusBuffer?.Dispose();
+                _yPadMinusBuffer = _accelerator.Allocate1D<long>(slabSize);
+                _yPadPlusBuffer?.Dispose();
+                _yPadPlusBuffer = _accelerator.Allocate1D<long>(slabSize);
             }
 
             int neededMasks = innerCount * 6;
@@ -237,10 +275,40 @@ namespace SpawnDev.VoxelEngine.Meshing
             _lastInnerCount = innerCount;
         }
 
+        /// <summary>
+        /// Convert an int[] PackedBlock slab into a long[] with bit 0 set iff
+        /// the block at that XZ position is solid (lower 12 bits non-zero),
+        /// and upload to the given GPU buffer. If the input slab is null,
+        /// uploads a zero-filled buffer (matches air-neighbor behavior).
+        /// </summary>
+        private void UploadYPadSlab(
+            int[]? slab,
+            ref long[]? staging,
+            MemoryBuffer1D<long, Stride1D.Dense> gpuBuffer,
+            int slabLen)
+        {
+            if (staging == null || staging.Length != slabLen)
+                staging = new long[slabLen];
+
+            if (slab == null)
+            {
+                Array.Clear(staging, 0, slabLen);
+            }
+            else
+            {
+                for (int i = 0; i < slabLen; i++)
+                    staging[i] = (slab[i] & 0xFFF) != 0 ? 1L : 0L;
+            }
+
+            gpuBuffer.View.SubView(0, slabLen).CopyFromCPU(staging);
+        }
+
         public void Dispose()
         {
             _occupancyBuffer?.Dispose();
             _faceMaskBuffer?.Dispose();
+            _yPadMinusBuffer?.Dispose();
+            _yPadPlusBuffer?.Dispose();
             _counterBuffer?.Dispose();
             IsReady = false;
         }

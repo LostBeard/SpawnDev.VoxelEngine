@@ -93,5 +93,73 @@ namespace SpawnDev.VoxelEngine.Meshing
             // -Y face: solid here AND air below (neighbor at y-1, which is bit shifted right)
             faceMasks[innerIdx + 5 * innerCount] = col & ~(col << 1) & pMask;
         }
+
+        /// <summary>
+        /// Face culling with Y-neighbor padding. Extends FaceCullKernel by accepting
+        /// two per-XZ bit slabs describing whether the -Y-neighbor section (at y=-1)
+        /// and +Y-neighbor section (at y=height) contain a solid voxel.
+        ///
+        /// Occupancy layout and face mask output layout are identical to FaceCullKernel.
+        /// Only the ±Y face cull uses the extra neighbor bits. When both slabs are
+        /// zero-filled the output matches FaceCullKernel exactly (air-neighbor fallback).
+        ///
+        /// yPadMinus[xzIdx] bit 0 = 1 if the -Y-neighbor column at that XZ has a solid
+        /// voxel at y=height-1 (i.e. the top layer of the section below). When 1, the
+        /// y=0 voxel of this section will not emit a -Y face (hidden by neighbor).
+        ///
+        /// yPadPlus[xzIdx] bit 0 = 1 if the +Y-neighbor column at that XZ has a solid
+        /// voxel at y=0 (i.e. the bottom layer of the section above). When 1, the
+        /// y=height-1 voxel of this section will not emit a +Y face.
+        ///
+        /// Both slabs are paddedXZ*paddedXZ longs indexed by [x + z*paddedXZ].
+        /// Only bit 0 of each entry is read; other bits are ignored.
+        /// </summary>
+        public static void FaceCullKernelWithYPad(
+            Index2D index,
+            ArrayView<long> occupancy,
+            ArrayView<long> yPadMinus,
+            ArrayView<long> yPadPlus,
+            ArrayView<long> faceMasks,
+            int paddedXZ,
+            int height)
+        {
+            int a = index.X;
+            int b = index.Y;
+            int innerXZ = paddedXZ - 2;
+
+            if (a < 1 || a >= paddedXZ - 1 || b < 1 || b >= paddedXZ - 1) return;
+
+            long pMask = height >= 64 ? ~0L : (1L << height) - 1L;
+
+            int xzIdx = a + b * paddedXZ;
+            long col = occupancy[xzIdx] & pMask;
+            long colPosX = occupancy[(a + 1) + b * paddedXZ];
+            long colNegX = occupancy[(a - 1) + b * paddedXZ];
+            long colPosZ = occupancy[a + (b + 1) * paddedXZ];
+            long colNegZ = occupancy[a + (b - 1) * paddedXZ];
+
+            long yMinusBit = yPadMinus[xzIdx] & 1L;
+            long yPlusBit = yPadPlus[xzIdx] & 1L;
+
+            int innerIdx = (a - 1) + (b - 1) * innerXZ;
+            int innerCount = innerXZ * innerXZ;
+
+            faceMasks[innerIdx + 0 * innerCount] = col & ~colPosX;
+            faceMasks[innerIdx + 1 * innerCount] = col & ~colNegX;
+            faceMasks[innerIdx + 2 * innerCount] = col & ~colPosZ;
+            faceMasks[innerIdx + 3 * innerCount] = col & ~colNegZ;
+
+            // +Y: at inner-y k, self=bit k, above-neighbor=bit k+1. Build above-mask
+            // by shifting col right 1 (brings bit k+1 to bit k) and OR-ing yPlusBit
+            // into position height-1 (that is, the above-neighbor at top of section).
+            long neighborAbove = (col >> 1) | (yPlusBit << (height - 1));
+            faceMasks[innerIdx + 4 * innerCount] = col & ~neighborAbove & pMask;
+
+            // -Y: at inner-y k, self=bit k, below-neighbor=bit k-1. Build below-mask
+            // by shifting col left 1 (brings bit k-1 to bit k) and OR-ing yMinusBit
+            // into position 0 (the below-neighbor at bottom of section).
+            long neighborBelow = (col << 1) | yMinusBit;
+            faceMasks[innerIdx + 5 * innerCount] = col & ~neighborBelow & pMask;
+        }
     }
 }
