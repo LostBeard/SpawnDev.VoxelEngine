@@ -11,10 +11,10 @@
 
 <p>
     Builds on the proven VR.1c foundation (WebGL2 + XRWebGLLayer + WebXR on Quest 3S).
-    This page drops the 2D spiral and renders an actual 3D scene: a floor plus rotating cubes,
-    drawn with real stereoscopic projection matrices from <code>XRView.projectionMatrix</code>
-    and the per-eye view matrix from <code>XRView.transform.inverse.matrix</code>. Move your head;
-    the parallax and perspective should respond correctly.
+    Drops the 2D spiral and renders actual 3D geometry using per-eye stereoscopic matrices
+    from <code>XRView.projectionMatrix</code> and <code>XRView.transform.inverse.matrix</code>.
+    Clear color is bright magenta so it's obvious when the clear is working even if geometry
+    isn't. Diagnostic output below updates every few frames.
 </p>
 
 @if (_report != null)
@@ -47,15 +47,17 @@
                 style="width:512px;height:256px;background:#111;border:1px solid #444;"></canvas>
     </div>
 
-    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:340px;">
+    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:360px;">
         <div style="color:#4ade80;font-weight:bold;">XR session state</div>
-        <div>Session active : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
+        <div>Session active  : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
         <div>Enabled features: @(_enabledFeatures == null ? "(none)" : string.Join(", ", _enabledFeatures))</div>
-        <div>Frames rendered: @_frameCount</div>
-        <div>Views per frame: @_viewsPerFrame</div>
-        <div>Framebuffer dim: @_framebufferDim</div>
-        <div>Reference space: @(_refSpaceTypeLabel ?? "(none)")</div>
-        <div>Draw calls/frame : @_drawsPerFrame</div>
+        <div>Frames rendered : @_frameCount</div>
+        <div>Views per frame : @_viewsPerFrame</div>
+        <div>Framebuffer dim : @_framebufferDim</div>
+        <div>Reference space : @(_refSpaceTypeLabel ?? "(none)")</div>
+        <div>Draw calls/frame: @_drawsPerFrame</div>
+        <div>Last GL error   : @_lastGlError</div>
+        <div>Debug           : @_debugLine</div>
     </div>
 </div>
 
@@ -70,6 +72,7 @@
     WebGLProgram? _program;
     WebGLBuffer? _vbo;
     WebGLBuffer? _ibo;
+    WebGLVertexArrayObject? _vao;
     WebGLUniformLocation? _uProjection;
     WebGLUniformLocation? _uView;
     WebGLUniformLocation? _uModel;
@@ -87,8 +90,9 @@
     int _drawsPerFrame;
     string _framebufferDim = "--";
     string? _errorMessage;
+    string _lastGlError = "--";
+    string _debugLine = "--";
 
-    // Cube indices start at 0 in the VBO; floor indices start at kCubeVertexCount in the VBO.
     const int CubeVertexCount = 8;
     const int FloorVertexCount = 4;
     const int CubeIndexCount = 36;
@@ -96,10 +100,11 @@
     const int CubeIndexOffsetBytes = 0;
     const int FloorIndexOffsetBytes = CubeIndexCount * sizeof(ushort);
 
-    // Model transforms for three rotating cubes (translation + axis + speed).
+    // Position + axis + rotation speed + scale. First cube is placed right in front
+    // of the viewer and large, so it's unmissable if the scene is rendering at all.
     readonly (Vector3 Pos, Vector3 Axis, float Speed, float Scale)[] _cubes = new[]
     {
-        (new Vector3( 0f, 1.2f, -3.0f), new Vector3(0, 1, 0), 0.6f, 0.5f),
+        (new Vector3( 0f,   1.5f, -1.5f), new Vector3(0, 1, 0), 0.6f, 0.8f),
         (new Vector3(-1.7f, 0.9f, -3.5f), new Vector3(1, 0, 0), 0.9f, 0.35f),
         (new Vector3( 1.5f, 1.6f, -4.2f), Vector3.Normalize(new Vector3(1, 1, 0)), 0.75f, 0.45f),
     };
@@ -123,7 +128,7 @@ void main() {
     const string FragSrc = @"#version 300 es
 precision mediump float;
 in vec3 v_color;
-out vec4 out_color;
+layout(location = 0) out vec4 out_color;
 
 void main() {
   out_color = vec4(v_color, 1.0);
@@ -165,9 +170,18 @@ void main() {
             _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, init);
             try { _enabledFeatures = _session.EnabledFeatures; } catch { _enabledFeatures = null; }
 
-            _xrLayer = new XRWebGLLayer(_session, _gl, new XRWebGLLayerInit { Depth = true, Antialias = true });
+            // Match VR.1c exactly: no XRWebGLLayerInit; defaults already include depth=true.
+            _xrLayer = new XRWebGLLayer(_session, _gl);
             _framebufferDim = $"{_xrLayer.FramebufferWidth} x {_xrLayer.FramebufferHeight}";
-            _session.UpdateRenderState(new XRRenderStateInit { BaseLayer = _xrLayer });
+            // XRRenderStateInit.DepthNear/DepthFar are non-nullable in the current wrapper
+            // and default to 0, which makes projectionMatrix elements [10] and [14] become
+            // NaN. Pass sane values explicitly.
+            _session.UpdateRenderState(new XRRenderStateInit
+            {
+                BaseLayer = _xrLayer,
+                DepthNear = 0.1,
+                DepthFar = 1000.0,
+            });
 
             try
             {
@@ -224,7 +238,10 @@ void main() {
         _uView = _gl.GetUniformLocation(_program, "u_view");
         _uModel = _gl.GetUniformLocation(_program, "u_model");
 
-        // Interleaved vertex format: pos (3 floats) + color (3 floats) = 24 bytes stride.
+        // Create + bind a VAO so vertex attribute state is unambiguous across frames.
+        _vao = _gl.CreateVertexArray();
+        _gl.BindVertexArray(_vao);
+
         var verts = BuildVertices();
         var indices = BuildIndices();
 
@@ -242,66 +259,39 @@ void main() {
         _gl.VertexAttribPointer(0, 3, GL.FLOAT, false, 24, 0);
         _gl.EnableVertexAttribArray(1);
         _gl.VertexAttribPointer(1, 3, GL.FLOAT, false, 24, 12);
-
-        _gl.Enable(GL.DEPTH_TEST);
-        _gl.DepthFunc(GL.LEQUAL);
     }
 
     static float[] BuildVertices()
     {
-        // Cube corners (-0.5 .. +0.5) each assigned a distinct color.
-        // Color interpolation across faces gives a recognizable rainbow cube.
         var v = new float[(CubeVertexCount + FloorVertexCount) * 6];
         int k = 0;
-        // 0: -x -y -z : black
-        v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = 0.05f; v[k++] = 0.05f; v[k++] = 0.05f;
-        // 1: +x -y -z : red
+        v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = 0.1f;  v[k++] = 0.1f;  v[k++] = 0.1f;
         v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = 1.0f;  v[k++] = 0.1f;  v[k++] = 0.1f;
-        // 2: +x +y -z : yellow
         v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = 1.0f;  v[k++] = 1.0f;  v[k++] = 0.1f;
-        // 3: -x +y -z : green
         v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = 0.1f;  v[k++] = 1.0f;  v[k++] = 0.1f;
-        // 4: -x -y +z : blue
         v[k++] = -0.5f; v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = 0.1f;  v[k++] = 0.1f;  v[k++] = 1.0f;
-        // 5: +x -y +z : magenta
         v[k++] =  0.5f; v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = 1.0f;  v[k++] = 0.1f;  v[k++] = 1.0f;
-        // 6: +x +y +z : white
         v[k++] =  0.5f; v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = 1.0f;  v[k++] = 1.0f;  v[k++] = 1.0f;
-        // 7: -x +y +z : cyan
         v[k++] = -0.5f; v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = 0.1f;  v[k++] = 1.0f;  v[k++] = 1.0f;
 
-        // Floor quad (10 x 10 meters at y=0), muted gray-blue.
         const float F = 5f;
-        // 8: -X -Z
-        v[k++] = -F; v[k++] = 0f; v[k++] = -F; v[k++] = 0.22f; v[k++] = 0.24f; v[k++] = 0.30f;
-        // 9: +X -Z
-        v[k++] =  F; v[k++] = 0f; v[k++] = -F; v[k++] = 0.26f; v[k++] = 0.22f; v[k++] = 0.30f;
-        // 10: +X +Z
-        v[k++] =  F; v[k++] = 0f; v[k++] =  F; v[k++] = 0.22f; v[k++] = 0.30f; v[k++] = 0.26f;
-        // 11: -X +Z
-        v[k++] = -F; v[k++] = 0f; v[k++] =  F; v[k++] = 0.28f; v[k++] = 0.26f; v[k++] = 0.24f;
+        v[k++] = -F; v[k++] = 0f; v[k++] = -F; v[k++] = 0.25f; v[k++] = 0.30f; v[k++] = 0.35f;
+        v[k++] =  F; v[k++] = 0f; v[k++] = -F; v[k++] = 0.35f; v[k++] = 0.25f; v[k++] = 0.30f;
+        v[k++] =  F; v[k++] = 0f; v[k++] =  F; v[k++] = 0.25f; v[k++] = 0.40f; v[k++] = 0.30f;
+        v[k++] = -F; v[k++] = 0f; v[k++] =  F; v[k++] = 0.40f; v[k++] = 0.30f; v[k++] = 0.25f;
         return v;
     }
 
     static ushort[] BuildIndices()
     {
-        // Cube: 12 triangles. Culling is disabled, so winding doesn't matter.
-        // Floor: 2 triangles.
         return new ushort[]
         {
-            // -Z face (0,1,2,3)
             0, 1, 2,   0, 2, 3,
-            // +Z face (4,5,6,7)
             4, 5, 6,   4, 6, 7,
-            // -X face (0,3,7,4)
             0, 3, 7,   0, 7, 4,
-            // +X face (1,2,6,5)
             1, 2, 6,   1, 6, 5,
-            // -Y face (0,1,5,4)
             0, 1, 5,   0, 5, 4,
-            // +Y face (3,2,6,7)
             3, 2, 6,   3, 6, 7,
-            // Floor quad
             8, 9, 10,  8, 10, 11,
         };
     }
@@ -309,7 +299,7 @@ void main() {
     void OnXrFrame(double time, XRFrame? frame)
     {
         if (!_sessionActive || frame == null || _session == null || _refSpace == null
-            || _gl == null || _xrLayer == null || _program == null)
+            || _gl == null || _xrLayer == null || _program == null || _vao == null)
         {
             return;
         }
@@ -321,27 +311,40 @@ void main() {
             using var pose = frame.GetViewerPose(_refSpace);
             if (pose == null) return;
 
+            // Use the raw-JSRef bindFramebuffer call that VR.1c uses (known good).
             using var fb = _xrLayer.Framebuffer;
-            _gl.BindFramebuffer(GL.FRAMEBUFFER, fb);
-            _gl.ClearColor(0.05f, 0.06f, 0.09f, 1f);
-            _gl.ClearDepth(1f);
+            _gl.JSRef!.CallVoid("bindFramebuffer", GL.FRAMEBUFFER, fb);
+
+            // Per-frame state reset. Paranoia; belts and suspenders.
+            _gl.Disable(GL.CULL_FACE);
             _gl.Enable(GL.DEPTH_TEST);
             _gl.DepthFunc(GL.LEQUAL);
             _gl.DepthMask(true);
-            _gl.UseProgram(_program);
 
-            // Build per-cube model matrices once per frame.
+            int fbW = _xrLayer.FramebufferWidth;
+            int fbH = _xrLayer.FramebufferHeight;
+            _gl.Viewport(0, 0, fbW, fbH);
+
+            // Bright magenta so it's clear when the clear itself is working.
+            _gl.ClearColor(0.85f, 0.15f, 0.45f, 1f);
+            _gl.ClearDepth(1f);
+            _gl.Clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+
+            _gl.UseProgram(_program);
+            _gl.BindVertexArray(_vao);
+
             float t = (float)(time / 1000.0);
-            var modelMatrices = new float[1 + _cubes.Length][];
-            modelMatrices[0] = Identity();
+            var identityModel = Identity();
+            var modelMatrices = new float[_cubes.Length][];
             for (int i = 0; i < _cubes.Length; i++)
             {
                 var c = _cubes[i];
-                modelMatrices[i + 1] = Compose(c.Pos, c.Axis, t * c.Speed, c.Scale);
+                modelMatrices[i] = Compose(c.Pos, c.Axis, t * c.Speed, c.Scale);
             }
 
             int viewCount = 0;
             int drawCount = 0;
+            string? frame0Debug = null;
 
             foreach (var view in pose.Views)
             {
@@ -349,10 +352,6 @@ void main() {
                 {
                     using var vp = _xrLayer.GetViewport(view);
                     _gl.Viewport(vp.X, vp.Y, vp.Width, vp.Height);
-                    if (viewCount == 0)
-                    {
-                        _gl.Clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
-                    }
 
                     using var proj = view.ProjectionMatrix;
                     using var xform = view.Transform;
@@ -362,21 +361,46 @@ void main() {
                     _gl.UniformMatrix4fv(_uProjection!, false, proj);
                     _gl.UniformMatrix4fv(_uView!, false, viewMat);
 
-                    // Draw floor (identity model).
-                    _gl.UniformMatrix4fv(_uModel!, false, modelMatrices[0]);
+                    _gl.UniformMatrix4fv(_uModel!, false, identityModel);
                     _gl.DrawElements(GL.TRIANGLES, FloorIndexCount, GL.UNSIGNED_SHORT, FloorIndexOffsetBytes);
                     drawCount++;
 
-                    // Draw each cube.
                     for (int i = 0; i < _cubes.Length; i++)
                     {
-                        _gl.UniformMatrix4fv(_uModel!, false, modelMatrices[i + 1]);
+                        _gl.UniformMatrix4fv(_uModel!, false, modelMatrices[i]);
                         _gl.DrawElements(GL.TRIANGLES, CubeIndexCount, GL.UNSIGNED_SHORT, CubeIndexOffsetBytes);
                         drawCount++;
+                    }
+
+                    if (_frameCount == 0 && viewCount == 0)
+                    {
+                        // Capture frame-0 diagnostic snapshot. Stringify the matrix components
+                        // rather than marshalling the float[] through BlazorJS - JSON.NET refuses
+                        // NaN/Inf and would throw SpecialNumberValuesNotSupported.
+                        float[] projArr, viewArr;
+                        try { projArr = proj.ToArray(); } catch { projArr = System.Array.Empty<float>(); }
+                        try { viewArr = viewMat.ToArray(); } catch { viewArr = System.Array.Empty<float>(); }
+                        string projStr = projArr.Length == 16
+                            ? $"({projArr[0]:F2},{projArr[5]:F2},{projArr[10]:F2},{projArr[14]:F2})"
+                            : "(unreadable)";
+                        string viewStr = viewArr.Length == 16
+                            ? $"({viewArr[12]:F2},{viewArr[13]:F2},{viewArr[14]:F2})"
+                            : "(unreadable)";
+                        frame0Debug = $"vp=({vp.X},{vp.Y},{vp.Width},{vp.Height}) " +
+                                      $"proj[0,5,10,14]={projStr} view[12,13,14]={viewStr}";
+                        JS.CallVoid("console.log", "[VR.2 frame 0] " + frame0Debug);
                     }
                     viewCount++;
                 }
             }
+
+            uint err = _gl.GetError();
+            if (err != 0)
+            {
+                _lastGlError = $"0x{err:X} at frame {_frameCount}";
+                JS.CallVoid("console.warn", $"[VR.2 frame {_frameCount}] gl.getError = 0x{err:X}");
+            }
+            if (frame0Debug != null) _debugLine = frame0Debug;
 
             _viewsPerFrame = viewCount;
             _drawsPerFrame = drawCount;
@@ -398,7 +422,6 @@ void main() {
         0, 0, 0, 1,
     };
 
-    // Compose: T(pos) * R(axis, angle) * S(scale). Column-major 4x4.
     static float[] Compose(Vector3 pos, Vector3 axis, float angle, float scale)
     {
         float c = MathF.Cos(angle);
@@ -406,7 +429,6 @@ void main() {
         float omc = 1f - c;
         var n = Vector3.Normalize(axis);
 
-        // Axis-angle rotation matrix (column-major).
         float r00 = c + n.X * n.X * omc;
         float r01 = n.Y * n.X * omc + n.Z * s;
         float r02 = n.Z * n.X * omc - n.Y * s;
@@ -419,7 +441,6 @@ void main() {
         float r21 = n.Y * n.Z * omc - n.X * s;
         float r22 = c + n.Z * n.Z * omc;
 
-        // Multiply rotation columns by scale, then place translation in column 3.
         return new float[]
         {
             r00 * scale, r01 * scale, r02 * scale, 0f,
@@ -460,6 +481,7 @@ void main() {
         _uProjection?.Dispose(); _uProjection = null;
         _uView?.Dispose(); _uView = null;
         _uModel?.Dispose(); _uModel = null;
+        _vao?.Dispose(); _vao = null;
         _vbo?.Dispose(); _vbo = null;
         _ibo?.Dispose(); _ibo = null;
         _program?.Dispose(); _program = null;
