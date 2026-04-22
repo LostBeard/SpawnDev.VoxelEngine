@@ -9,10 +9,10 @@
 <h3>VR Prototype - Hybrid pipeline measurement (Phase VR.1a)</h3>
 
 <p>
-    Measures the hybrid fallback render path end-to-end: WebGPU compute generates an animated spiral pattern,
-    WebGPU renders it to an <code>OffscreenCanvas</code>, <code>transferToImageBitmap()</code> hands it over,
-    WebGL2 uploads via <code>texImage2D</code> and draws to the visible canvas via a full-screen triangle.
-    Per-stage timings show whether the bridge fits the 11 ms 90fps budget.
+    Measures the hybrid fallback bridge end-to-end: WebGPU fragment shader computes an animated spiral to
+    an <code>OffscreenCanvas</code>, <code>transferToImageBitmap()</code> hands it over, WebGL2 uploads via
+    <code>texImage2D</code> and draws to the visible canvas. Per-stage timings show whether the bridge fits
+    the 11 ms 90fps budget.
 </p>
 
 @if (_report != null)
@@ -48,7 +48,6 @@
     <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:360px;">
         <div style="color:#4ade80;font-weight:bold;">Per-frame timing (ms, rolling @RollingWindow frames)</div>
         <div style="margin-top:6px;">
-            <div>compute        : @Fmt(_tCompute)</div>
             <div>render         : @Fmt(_tRender)</div>
             <div>transferBitmap : @Fmt(_tTransferBitmap)</div>
             <div>texImage2D     : @Fmt(_tTexUpload)</div>
@@ -67,19 +66,13 @@
 @code {
     RenderPathReport? _report;
 
-    // WebGPU side
+    // WebGPU side (simplified - single render pipeline, no compute, no storage texture)
     GPUAdapter? _adapter;
     GPUDevice? _device;
-    GPUTexture? _storageTexture;
-    GPUTextureView? _storageTextureView;
-    GPUShaderModule? _computeShader;
-    GPUShaderModule? _blitShader;
-    GPUComputePipeline? _computePipeline;
-    GPURenderPipeline? _blitPipeline;
-    GPUBindGroup? _computeBindGroup;
-    GPUBindGroup? _blitBindGroup;
+    GPUShaderModule? _shader;
+    GPURenderPipeline? _pipeline;
+    GPUBindGroup? _bindGroup;
     GPUBuffer? _paramsBuffer;
-    GPUSampler? _sampler;
 
     OffscreenCanvas? _offscreen;
     GPUCanvasContext? _offscreenCtx;
@@ -104,41 +97,23 @@
     const int RollingWindow = 60;
     const string CanvasFormat = "bgra8unorm";
 
-    readonly RollingMs _tCompute = new();
     readonly RollingMs _tRender = new();
     readonly RollingMs _tTransferBitmap = new();
     readonly RollingMs _tTexUpload = new();
     readonly RollingMs _tWebGLDraw = new();
     readonly RollingMs _tTotal = new();
 
-    const string ComputeWgsl = @"
+    // Single-pass WGSL: fragment shader computes the spiral pattern per-pixel.
+    // No compute, no storage texture - just a fullscreen triangle that writes
+    // animated colors directly to the offscreen canvas color attachment.
+    const string ShaderWgsl = @"
 struct Params {
-  time   : f32,
-  width  : u32,
-  height : u32,
-  _pad   : u32,
+  time : f32,
+  _pad0 : f32,
+  _pad1 : f32,
+  _pad2 : f32,
 }
-@group(0) @binding(0) var outTex : texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(1) var<uniform> params : Params;
-
-@compute @workgroup_size(8, 8)
-fn cs(@builtin(global_invocation_id) gid : vec3<u32>) {
-  if (gid.x >= params.width || gid.y >= params.height) { return; }
-  let uv = vec2<f32>(f32(gid.x) / f32(params.width), f32(gid.y) / f32(params.height));
-  let t = params.time;
-  let d = uv - vec2<f32>(0.5, 0.5);
-  let dist = length(d);
-  let angle = atan2(d.y, d.x);
-  let r = sin(dist * 20.0 - t * 2.0) * 0.5 + 0.5;
-  let g = sin(angle * 4.0 + t) * 0.5 + 0.5;
-  let b = cos(dist * 15.0 + t * 1.5) * 0.5 + 0.5;
-  textureStore(outTex, vec2<i32>(gid.xy), vec4<f32>(r, g, b, 1.0));
-}
-";
-
-    const string BlitWgsl = @"
-@group(0) @binding(0) var tex : texture_2d<f32>;
-@group(0) @binding(1) var samp : sampler;
+@group(0) @binding(0) var<uniform> params : Params;
 
 struct VOut {
   @builtin(position) pos : vec4<f32>,
@@ -165,7 +140,14 @@ fn vs(@builtin(vertex_index) i : u32) -> VOut {
 
 @fragment
 fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
-  return textureSample(tex, samp, uv);
+  let t = params.time;
+  let d = uv - vec2<f32>(0.5, 0.5);
+  let dist = length(d);
+  let angle = atan2(d.y, d.x);
+  let r = sin(dist * 20.0 - t * 2.0) * 0.5 + 0.5;
+  let g = sin(angle * 4.0 + t) * 0.5 + 0.5;
+  let b = cos(dist * 15.0 + t * 1.5) * 0.5 + 0.5;
+  return vec4<f32>(r, g, b, 1.0);
 }
 ";
 
@@ -239,62 +221,32 @@ void main() {
             AlphaMode = "premultiplied",
         });
 
-        _storageTexture = _device.CreateTexture(new GPUTextureDescriptor
-        {
-            Size = new[] { Width, Height },
-            Format = "rgba8unorm",
-            Usage = GPUTextureUsage.StorageBinding | GPUTextureUsage.TextureBinding,
-        });
-        _storageTextureView = _storageTexture.CreateView();
-
-        _sampler = _device.CreateSampler(new GPUSamplerDescriptor
-        {
-            MagFilter = "linear",
-            MinFilter = "linear",
-        });
-
+        // Params uniform buffer: time(f32) + 3 pads = 16 bytes (WGSL uniform alignment).
         _paramsBuffer = _device.CreateBuffer(new GPUBufferDescriptor
         {
             Size = 16,
             Usage = GPUBufferUsage.Uniform | GPUBufferUsage.CopyDst,
         });
 
-        _computeShader = _device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = ComputeWgsl });
-        _computePipeline = _device.CreateComputePipeline(new GPUComputePipelineDescriptor
+        _shader = _device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = ShaderWgsl });
+        _pipeline = _device.CreateRenderPipeline(new GPURenderPipelineDescriptor
         {
             Layout = "auto",
-            Compute = new GPUProgrammableStage { Module = _computeShader, EntryPoint = "cs" },
-        });
-        _computeBindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
-        {
-            Layout = _computePipeline.GetBindGroupLayout(0),
-            Entries = new GPUBindGroupEntry[]
-            {
-                new() { Binding = 0, Resource = _storageTextureView },
-                new() { Binding = 1, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },
-            },
-        });
-
-        _blitShader = _device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = BlitWgsl });
-        _blitPipeline = _device.CreateRenderPipeline(new GPURenderPipelineDescriptor
-        {
-            Layout = "auto",
-            Vertex = new GPUVertexState { Module = _blitShader, EntryPoint = "vs" },
+            Vertex = new GPUVertexState { Module = _shader, EntryPoint = "vs" },
             Fragment = new GPUFragmentState
             {
-                Module = _blitShader,
+                Module = _shader,
                 EntryPoint = "fs",
                 Targets = new[] { new GPUColorTargetState { Format = CanvasFormat } },
             },
             Primitive = new GPUPrimitiveState { Topology = GPUPrimitiveTopology.TriangleList },
         });
-        _blitBindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
+        _bindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
         {
-            Layout = _blitPipeline.GetBindGroupLayout(0),
+            Layout = _pipeline.GetBindGroupLayout(0),
             Entries = new GPUBindGroupEntry[]
             {
-                new() { Binding = 0, Resource = _storageTextureView },
-                new() { Binding = 1, Resource = _sampler },
+                new() { Binding = 0, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },
             },
         });
     }
@@ -362,35 +314,17 @@ void main() {
 
         try
         {
-            // Upload params (time + dims)
             double s0 = JS.Get<double>("performance.now()");
+
+            // Upload params (time only; 16-byte aligned)
             var bytes = new byte[16];
             BitConverter.TryWriteBytes(bytes.AsSpan(0, 4), (float)(time / 1000.0));
-            BitConverter.TryWriteBytes(bytes.AsSpan(4, 4), (uint)Width);
-            BitConverter.TryWriteBytes(bytes.AsSpan(8, 4), (uint)Height);
-            BitConverter.TryWriteBytes(bytes.AsSpan(12, 4), (uint)0);
             using (var u8 = new Uint8Array(bytes))
             {
                 _device!.Queue.WriteBuffer(_paramsBuffer!, 0, u8);
             }
 
-            // Compute pass
-            using (var encoder = _device.CreateCommandEncoder())
-            {
-                using (var cp = encoder.BeginComputePass())
-                {
-                    cp.SetPipeline(_computePipeline!);
-                    cp.SetBindGroup(0, _computeBindGroup!);
-                    cp.DispatchWorkgroups((uint)((Width + 7) / 8), (uint)((Height + 7) / 8));
-                    cp.End();
-                }
-                using var cmd = encoder.Finish();
-                _device.Queue.Submit(new[] { cmd });
-            }
-            double s1 = JS.Get<double>("performance.now()");
-            _tCompute.Push(s1 - s0);
-
-            // Render pass: sample storage texture to offscreen canvas
+            // Single render pass: fullscreen triangle with pattern fragment shader.
             using (var encoder = _device.CreateCommandEncoder())
             {
                 using var currentTexture = _offscreenCtx!.GetCurrentTexture();
@@ -408,39 +342,37 @@ void main() {
                         }
                     }
                 });
-                rp.SetPipeline(_blitPipeline!);
-                rp.SetBindGroup(0, _blitBindGroup!);
+                rp.SetPipeline(_pipeline!);
+                rp.SetBindGroup(0, _bindGroup!);
                 rp.Draw(3);
                 rp.End();
                 using var cmd = encoder.Finish();
                 _device.Queue.Submit(new[] { cmd });
             }
-            double s2 = JS.Get<double>("performance.now()");
-            _tRender.Push(s2 - s1);
+            double s1 = JS.Get<double>("performance.now()");
+            _tRender.Push(s1 - s0);
 
             // transferToImageBitmap
             using var bitmap = _offscreen!.TransferToImageBitmap();
-            double s3 = JS.Get<double>("performance.now()");
-            _tTransferBitmap.Push(s3 - s2);
+            double s2 = JS.Get<double>("performance.now()");
+            _tTransferBitmap.Push(s2 - s1);
 
             // WebGL2 texImage2D from imageBitmap
             _gl!.BindTexture(GL.TEXTURE_2D, _glTexture!);
-            _gl.TexImage2D(
-                GL.TEXTURE_2D, 0, (int)GL.RGBA,
-                GL.RGBA, GL.UNSIGNED_BYTE, bitmap);
-            double s4 = JS.Get<double>("performance.now()");
-            _tTexUpload.Push(s4 - s3);
+            _gl.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, bitmap);
+            double s3 = JS.Get<double>("performance.now()");
+            _tTexUpload.Push(s3 - s2);
 
-            // WebGL2 draw full-screen triangle
+            // WebGL2 draw
             _gl.UseProgram(_glProgram!);
             _gl.ActiveTexture(GL.TEXTURE0);
             _gl.BindTexture(GL.TEXTURE_2D, _glTexture!);
             _gl.DrawArrays(GL.TRIANGLES, 0, 3);
             _gl.Finish();
-            double s5 = JS.Get<double>("performance.now()");
-            _tWebGLDraw.Push(s5 - s4);
+            double s4 = JS.Get<double>("performance.now()");
+            _tWebGLDraw.Push(s4 - s3);
 
-            _tTotal.Push(s5 - s0);
+            _tTotal.Push(s4 - s0);
             _frameCount++;
             double dt = time - _lastFrameTime;
             if (dt > 0) _lastFps = 1000.0 / dt;
@@ -469,16 +401,10 @@ void main() {
     async Task DisposeInternalAsync()
     {
         _rafCallback?.Dispose(); _rafCallback = null;
-        _computeBindGroup?.Dispose(); _computeBindGroup = null;
-        _blitBindGroup?.Dispose(); _blitBindGroup = null;
-        _computePipeline?.Dispose(); _computePipeline = null;
-        _blitPipeline?.Dispose(); _blitPipeline = null;
-        _computeShader?.Dispose(); _computeShader = null;
-        _blitShader?.Dispose(); _blitShader = null;
-        _sampler?.Dispose(); _sampler = null;
+        _bindGroup?.Dispose(); _bindGroup = null;
+        _pipeline?.Dispose(); _pipeline = null;
+        _shader?.Dispose(); _shader = null;
         _paramsBuffer?.Dispose(); _paramsBuffer = null;
-        _storageTextureView?.Dispose(); _storageTextureView = null;
-        _storageTexture?.Dispose(); _storageTexture = null;
         _offscreenCtx?.Dispose(); _offscreenCtx = null;
         _offscreen?.Dispose(); _offscreen = null;
         _glTexture?.Dispose(); _glTexture = null;
