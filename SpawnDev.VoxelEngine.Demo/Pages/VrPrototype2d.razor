@@ -4,17 +4,17 @@
 @using SpawnDev.VoxelEngine.Rendering
 @implements IAsyncDisposable
 
-<PageTitle>VR Prototype 2D - WebGPU baseline</PageTitle>
+<PageTitle>VR Prototype 2D - Direct + Bridge comparison</PageTitle>
 
-<h3>VR Prototype - WebGPU-to-canvas baseline (Phase VR.1a, bisection step)</h3>
+<h3>VR Prototype - WebGPU direct vs WebGL2 bridge (Phase VR.1a)</h3>
 
 <p>
-    <strong>Current mode: WebGPU direct to visible canvas.</strong>
-    No OffscreenCanvas. No WebGL2. No imageBitmap bridge.
-    Just: WebGPU fragment shader computes an animated spiral pattern directly on the visible canvas.
-    If this crashes, something is broken at the basic WebGPU-device-to-canvas level (and that's much
-    more informative than the hybrid bridge version crashing). If this renders cleanly, we know the
-    WebGPU foundation works and we can add the OffscreenCanvas + WebGL2 bridge back in a follow-up.
+    Two render paths side-by-side. Both show the same animated spiral pattern.
+    <strong>LEFT (direct):</strong> WebGPU renders the pattern straight to the visible canvas.
+    <strong>RIGHT (bridge):</strong> WebGPU renders to an <code>OffscreenCanvas</code>, WebGL2 uploads the canvas
+    directly via <code>gl.texImage2D(target, level, intfmt, fmt, type, offscreenCanvas)</code> (Chromium's
+    GPU-to-GPU path, NO <code>transferToImageBitmap()</code> which would be destructive per frame).
+    Matching pixels between left and right means the bridge is faithful.
 </p>
 
 @if (_report != null)
@@ -30,7 +30,7 @@
     else
     {
         <button @onclick="StartAsync" disabled="@_starting">
-            @(_starting ? "Starting..." : "Start measurement")
+            @(_starting ? "Starting..." : "Start")
         </button>
     }
 </div>
@@ -42,16 +42,24 @@
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;">
     <div>
-        <div style="color:#888;font-size:0.85em;">WebGPU direct render (no bridge)</div>
-        <canvas id="vr-proto-2d-canvas" width="512" height="512"
+        <div style="color:#888;font-size:0.85em;">Direct WebGPU</div>
+        <canvas id="vr-proto-2d-direct" width="512" height="512"
+                style="width:512px;height:512px;background:#111;border:1px solid #444;"></canvas>
+    </div>
+    <div>
+        <div style="color:#888;font-size:0.85em;">WebGL2 via bridge (WebGPU→OffscreenCanvas→gl.texImage2D)</div>
+        <canvas id="vr-proto-2d-bridge" width="512" height="512"
                 style="width:512px;height:512px;background:#111;border:1px solid #444;"></canvas>
     </div>
 
-    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:360px;">
+    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:340px;">
         <div style="color:#4ade80;font-weight:bold;">Per-frame timing (ms, rolling @RollingWindow frames)</div>
         <div style="margin-top:6px;">
-            <div>render : @Fmt(_tRender)</div>
-            <div style="color:#facc15;">total  : @Fmt(_tTotal)</div>
+            <div>directRender    : @Fmt(_tDirect)</div>
+            <div>offscreenRender : @Fmt(_tOffscreenRender)</div>
+            <div>texImage2D      : @Fmt(_tTexUpload)</div>
+            <div>webgl draw      : @Fmt(_tWebGLDraw)</div>
+            <div style="color:#facc15;">total           : @Fmt(_tTotal)</div>
         </div>
         <hr style="border-color:#444;margin:8px 0;" />
         <div>frames rendered: @_frameCount</div>
@@ -68,11 +76,21 @@
     GPUDevice? _device;
     GPUShaderModule? _shader;
     GPURenderPipeline? _pipeline;
-    GPUBindGroup? _bindGroup;
     GPUBuffer? _paramsBuffer;
 
-    HTMLCanvasElement? _canvas;
-    GPUCanvasContext? _canvasCtx;
+    // Direct canvas
+    HTMLCanvasElement? _canvasDirect;
+    GPUCanvasContext? _ctxDirect;
+    GPUBindGroup? _bindGroupDirect;
+
+    // Bridge offscreen WebGPU → WebGL2
+    OffscreenCanvas? _offscreen;
+    GPUCanvasContext? _ctxOffscreen;
+    GPUBindGroup? _bindGroupOffscreen;
+    HTMLCanvasElement? _canvasBridge;
+    WebGL2RenderingContext? _gl;
+    WebGLProgram? _glProgram;
+    WebGLTexture? _glTexture;
 
     bool _running;
     bool _starting;
@@ -87,7 +105,10 @@
     const int RollingWindow = 60;
     const string CanvasFormat = "bgra8unorm";
 
-    readonly RollingMs _tRender = new();
+    readonly RollingMs _tDirect = new();
+    readonly RollingMs _tOffscreenRender = new();
+    readonly RollingMs _tTexUpload = new();
+    readonly RollingMs _tWebGLDraw = new();
     readonly RollingMs _tTotal = new();
 
     const string ShaderWgsl = @"
@@ -135,6 +156,25 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
 }
 ";
 
+    const string GlVertSrc = @"#version 300 es
+out vec2 v_uv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  v_uv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+";
+
+    const string GlFragSrc = @"#version 300 es
+precision mediump float;
+in vec2 v_uv;
+uniform sampler2D u_tex;
+out vec4 out_color;
+void main() {
+  out_color = texture(u_tex, vec2(v_uv.x, 1.0 - v_uv.y));
+}
+";
+
     protected override async Task OnInitializedAsync()
     {
         _report = await RenderPathDetector.DetectAsync(JS);
@@ -176,17 +216,17 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
         _device = await _adapter.RequestDevice();
 
         using var doc = JS.Get<Document>("document");
-        _canvas = doc.GetElementById<HTMLCanvasElement>("vr-proto-2d-canvas")
-            ?? throw new InvalidOperationException("canvas element not found");
 
-        _canvasCtx = _canvas.GetContext<GPUCanvasContext>("webgpu")
-            ?? throw new InvalidOperationException("canvas.getContext('webgpu') returned null");
-        _canvasCtx.Configure(new GPUCanvasConfiguration
-        {
-            Device = _device,
-            Format = CanvasFormat,
-            AlphaMode = "premultiplied",
-        });
+        _canvasDirect = doc.GetElementById<HTMLCanvasElement>("vr-proto-2d-direct")
+            ?? throw new InvalidOperationException("direct canvas not found");
+        _ctxDirect = _canvasDirect.GetContext<GPUCanvasContext>("webgpu")
+            ?? throw new InvalidOperationException("direct canvas.getContext('webgpu') null");
+        _ctxDirect.Configure(new GPUCanvasConfiguration { Device = _device, Format = CanvasFormat, AlphaMode = "premultiplied" });
+
+        _offscreen = new OffscreenCanvas(Width, Height);
+        _ctxOffscreen = _offscreen.GetWebGPUContext()
+            ?? throw new InvalidOperationException("offscreen.getWebGPUContext() null");
+        _ctxOffscreen.Configure(new GPUCanvasConfiguration { Device = _device, Format = CanvasFormat, AlphaMode = "premultiplied" });
 
         _paramsBuffer = _device.CreateBuffer(new GPUBufferDescriptor
         {
@@ -207,7 +247,8 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
             },
             Primitive = new GPUPrimitiveState { Topology = GPUPrimitiveTopology.TriangleList },
         });
-        _bindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
+
+        _bindGroupDirect = _device.CreateBindGroup(new GPUBindGroupDescriptor
         {
             Layout = _pipeline.GetBindGroupLayout(0),
             Entries = new GPUBindGroupEntry[]
@@ -215,6 +256,52 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
                 new() { Binding = 0, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },
             },
         });
+        _bindGroupOffscreen = _device.CreateBindGroup(new GPUBindGroupDescriptor
+        {
+            Layout = _pipeline.GetBindGroupLayout(0),
+            Entries = new GPUBindGroupEntry[]
+            {
+                new() { Binding = 0, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },
+            },
+        });
+
+        // WebGL2 setup on bridge canvas
+        _canvasBridge = doc.GetElementById<HTMLCanvasElement>("vr-proto-2d-bridge")
+            ?? throw new InvalidOperationException("bridge canvas not found");
+        _gl = _canvasBridge.GetContext<WebGL2RenderingContext>("webgl2")
+            ?? throw new InvalidOperationException("webgl2 context null");
+
+        using var vert = _gl.CreateShader(GL.VERTEX_SHADER);
+        _gl.ShaderSource(vert, GlVertSrc);
+        _gl.CompileShader(vert);
+        if (!_gl.GetShaderParameter<bool>(vert, GL.COMPILE_STATUS))
+            throw new InvalidOperationException("Vertex shader compile: " + _gl.GetShaderInfoLog(vert));
+
+        using var frag = _gl.CreateShader(GL.FRAGMENT_SHADER);
+        _gl.ShaderSource(frag, GlFragSrc);
+        _gl.CompileShader(frag);
+        if (!_gl.GetShaderParameter<bool>(frag, GL.COMPILE_STATUS))
+            throw new InvalidOperationException("Fragment shader compile: " + _gl.GetShaderInfoLog(frag));
+
+        _glProgram = _gl.CreateProgram();
+        _gl.AttachShader(_glProgram, vert);
+        _gl.AttachShader(_glProgram, frag);
+        _gl.LinkProgram(_glProgram);
+        if (!_gl.GetProgramParameter<bool>(_glProgram, GL.LINK_STATUS))
+            throw new InvalidOperationException("Program link: " + _gl.GetProgramInfoLog(_glProgram));
+
+        _glTexture = _gl.CreateTexture();
+        _gl.BindTexture(GL.TEXTURE_2D, _glTexture);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
+
+        _gl.UseProgram(_glProgram);
+        using var texLoc = _gl.GetUniformLocation(_glProgram, "u_tex");
+        if (texLoc != null) _gl.Uniform1i(texLoc, 0);
+
+        _gl.Viewport(0, 0, Width, Height);
     }
 
     void ScheduleFrame()
@@ -239,34 +326,74 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
                 _device!.Queue.WriteBuffer(_paramsBuffer!, 0, u8);
             }
 
+            // Direct path: WebGPU render to visible canvas
             using (var encoder = _device.CreateCommandEncoder())
             {
-                using var currentTexture = _canvasCtx!.GetCurrentTexture();
-                using var currentView = currentTexture.CreateView();
+                using var curTex = _ctxDirect!.GetCurrentTexture();
+                using var curView = curTex.CreateView();
                 using var rp = encoder.BeginRenderPass(new GPURenderPassDescriptor
                 {
                     ColorAttachments = new[]
                     {
                         new GPURenderPassColorAttachment
                         {
-                            View = currentView,
-                            LoadOp = GPULoadOp.Clear,
-                            StoreOp = GPUStoreOp.Store,
+                            View = curView, LoadOp = GPULoadOp.Clear, StoreOp = GPUStoreOp.Store,
                             ClearValue = new GPUColorDict { R = 0, G = 0, B = 0, A = 1 },
                         }
                     }
                 });
                 rp.SetPipeline(_pipeline!);
-                rp.SetBindGroup(0, _bindGroup!);
+                rp.SetBindGroup(0, _bindGroupDirect!);
                 rp.Draw(3);
                 rp.End();
                 using var cmd = encoder.Finish();
                 _device.Queue.Submit(new[] { cmd });
             }
-
             double s1 = JS.Get<double>("performance.now()");
-            _tRender.Push(s1 - s0);
-            _tTotal.Push(s1 - s0);
+            _tDirect.Push(s1 - s0);
+
+            // Bridge path (a): WebGPU render to OffscreenCanvas
+            using (var encoder = _device.CreateCommandEncoder())
+            {
+                using var curTex = _ctxOffscreen!.GetCurrentTexture();
+                using var curView = curTex.CreateView();
+                using var rp = encoder.BeginRenderPass(new GPURenderPassDescriptor
+                {
+                    ColorAttachments = new[]
+                    {
+                        new GPURenderPassColorAttachment
+                        {
+                            View = curView, LoadOp = GPULoadOp.Clear, StoreOp = GPUStoreOp.Store,
+                            ClearValue = new GPUColorDict { R = 0, G = 0, B = 0, A = 1 },
+                        }
+                    }
+                });
+                rp.SetPipeline(_pipeline!);
+                rp.SetBindGroup(0, _bindGroupOffscreen!);
+                rp.Draw(3);
+                rp.End();
+                using var cmd = encoder.Finish();
+                _device.Queue.Submit(new[] { cmd });
+            }
+            double s2 = JS.Get<double>("performance.now()");
+            _tOffscreenRender.Push(s2 - s1);
+
+            // Bridge path (b): WebGL2 uploads OffscreenCanvas directly (non-destructive, Chromium GPU-to-GPU)
+            _gl!.BindTexture(GL.TEXTURE_2D, _glTexture!);
+            _gl.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, _offscreen!);
+            double s3 = JS.Get<double>("performance.now()");
+            _tTexUpload.Push(s3 - s2);
+
+            // Bridge path (c): WebGL2 draw
+            _gl.UseProgram(_glProgram!);
+            _gl.ActiveTexture(GL.TEXTURE0);
+            _gl.BindTexture(GL.TEXTURE_2D, _glTexture!);
+            _gl.DrawArrays(GL.TRIANGLES, 0, 3);
+            _gl.Finish();
+            double s4 = JS.Get<double>("performance.now()");
+            _tWebGLDraw.Push(s4 - s3);
+
+            _tTotal.Push(s4 - s0);
 
             _frameCount++;
             double dt = time - _lastFrameTime;
@@ -296,12 +423,19 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
     async Task DisposeInternalAsync()
     {
         _rafCallback?.Dispose(); _rafCallback = null;
-        _bindGroup?.Dispose(); _bindGroup = null;
+        _bindGroupDirect?.Dispose(); _bindGroupDirect = null;
+        _bindGroupOffscreen?.Dispose(); _bindGroupOffscreen = null;
         _pipeline?.Dispose(); _pipeline = null;
         _shader?.Dispose(); _shader = null;
         _paramsBuffer?.Dispose(); _paramsBuffer = null;
-        _canvasCtx?.Dispose(); _canvasCtx = null;
-        _canvas?.Dispose(); _canvas = null;
+        _ctxDirect?.Dispose(); _ctxDirect = null;
+        _canvasDirect?.Dispose(); _canvasDirect = null;
+        _ctxOffscreen?.Dispose(); _ctxOffscreen = null;
+        _offscreen?.Dispose(); _offscreen = null;
+        _glTexture?.Dispose(); _glTexture = null;
+        _glProgram?.Dispose(); _glProgram = null;
+        _gl?.Dispose(); _gl = null;
+        _canvasBridge?.Dispose(); _canvasBridge = null;
         _device?.Dispose(); _device = null;
         _adapter?.Dispose(); _adapter = null;
         await Task.CompletedTask;
