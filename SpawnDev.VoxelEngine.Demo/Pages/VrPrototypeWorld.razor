@@ -1,0 +1,486 @@
+@page "/vr-prototype-world"
+@using System.Numerics
+@using SpawnDev.BlazorJS
+@using SpawnDev.BlazorJS.JSObjects
+@using SpawnDev.VoxelEngine.Rendering
+@implements IAsyncDisposable
+
+<PageTitle>VR Prototype World - First 3D scene (Phase VR.2)</PageTitle>
+
+<h3>VR Prototype - First 3D World (Phase VR.2)</h3>
+
+<p>
+    Builds on the proven VR.1c foundation (WebGL2 + XRWebGLLayer + WebXR on Quest 3S).
+    This page drops the 2D spiral and renders an actual 3D scene: a floor plus rotating cubes,
+    drawn with real stereoscopic projection matrices from <code>XRView.projectionMatrix</code>
+    and the per-eye view matrix from <code>XRView.transform.inverse.matrix</code>. Move your head;
+    the parallax and perspective should respond correctly.
+</p>
+
+@if (_report != null)
+{
+    <p>Capability: <code style="color:@PathColor(_report.Path)">@_report.Path</code></p>
+}
+
+<div style="margin:12px 0;">
+    @if (_sessionActive)
+    {
+        <button @onclick="ExitVrAsync">Exit VR</button>
+    }
+    else
+    {
+        <button @onclick="EnterVrAsync" disabled="@(_starting || _report == null || !_report.HasImmersiveVr)">
+            @(_starting ? "Starting VR session..." : (_report?.HasImmersiveVr == true ? "Enter VR" : "VR not available"))
+        </button>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <pre style="color:#ef4444;white-space:pre-wrap;">@_errorMessage</pre>
+}
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;">
+    <div>
+        <div style="color:#888;font-size:0.85em;">WebGL2 context (XR-compatible; drives the XRWebGLLayer framebuffer in VR)</div>
+        <canvas id="vr-proto-world-canvas" width="1024" height="512"
+                style="width:512px;height:256px;background:#111;border:1px solid #444;"></canvas>
+    </div>
+
+    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:340px;">
+        <div style="color:#4ade80;font-weight:bold;">XR session state</div>
+        <div>Session active : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
+        <div>Enabled features: @(_enabledFeatures == null ? "(none)" : string.Join(", ", _enabledFeatures))</div>
+        <div>Frames rendered: @_frameCount</div>
+        <div>Views per frame: @_viewsPerFrame</div>
+        <div>Framebuffer dim: @_framebufferDim</div>
+        <div>Reference space: @(_refSpaceTypeLabel ?? "(none)")</div>
+        <div>Draw calls/frame : @_drawsPerFrame</div>
+    </div>
+</div>
+
+@inject BlazorJSRuntime JS
+
+@code {
+    RenderPathReport? _report;
+
+    HTMLCanvasElement? _canvas;
+    WebGL2RenderingContext? _gl;
+
+    WebGLProgram? _program;
+    WebGLBuffer? _vbo;
+    WebGLBuffer? _ibo;
+    WebGLUniformLocation? _uProjection;
+    WebGLUniformLocation? _uView;
+    WebGLUniformLocation? _uModel;
+
+    XRSession? _session;
+    XRWebGLLayer? _xrLayer;
+    XRReferenceSpace? _refSpace;
+    string? _refSpaceTypeLabel;
+    string[]? _enabledFeatures;
+
+    bool _sessionActive;
+    bool _starting;
+    int _frameCount;
+    int _viewsPerFrame;
+    int _drawsPerFrame;
+    string _framebufferDim = "--";
+    string? _errorMessage;
+
+    // Cube indices start at 0 in the VBO; floor indices start at kCubeVertexCount in the VBO.
+    const int CubeVertexCount = 8;
+    const int FloorVertexCount = 4;
+    const int CubeIndexCount = 36;
+    const int FloorIndexCount = 6;
+    const int CubeIndexOffsetBytes = 0;
+    const int FloorIndexOffsetBytes = CubeIndexCount * sizeof(ushort);
+
+    // Model transforms for three rotating cubes (translation + axis + speed).
+    readonly (Vector3 Pos, Vector3 Axis, float Speed, float Scale)[] _cubes = new[]
+    {
+        (new Vector3( 0f, 1.2f, -3.0f), new Vector3(0, 1, 0), 0.6f, 0.5f),
+        (new Vector3(-1.7f, 0.9f, -3.5f), new Vector3(1, 0, 0), 0.9f, 0.35f),
+        (new Vector3( 1.5f, 1.6f, -4.2f), Vector3.Normalize(new Vector3(1, 1, 0)), 0.75f, 0.45f),
+    };
+
+    const string VertSrc = @"#version 300 es
+layout(location = 0) in vec3 a_pos;
+layout(location = 1) in vec3 a_color;
+
+uniform mat4 u_projection;
+uniform mat4 u_view;
+uniform mat4 u_model;
+
+out vec3 v_color;
+
+void main() {
+  gl_Position = u_projection * u_view * u_model * vec4(a_pos, 1.0);
+  v_color = a_color;
+}
+";
+
+    const string FragSrc = @"#version 300 es
+precision mediump float;
+in vec3 v_color;
+out vec4 out_color;
+
+void main() {
+  out_color = vec4(v_color, 1.0);
+}
+";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _report = await RenderPathDetector.DetectAsync(JS);
+    }
+
+    async Task EnterVrAsync()
+    {
+        if (_sessionActive || _starting) return;
+        _starting = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            using var nav = new Navigator();
+            using var xr = nav.XR ?? throw new InvalidOperationException("navigator.xr unavailable");
+
+            using var doc = JS.Get<Document>("document");
+            _canvas = doc.GetElementById<HTMLCanvasElement>("vr-proto-world-canvas")
+                ?? throw new InvalidOperationException("canvas not found");
+            _gl = _canvas.GetContext<WebGL2RenderingContext>("webgl2", new WebGLContextAttributes
+            {
+                XrCompatible = true,
+            }) ?? throw new InvalidOperationException("webgl2 context null");
+
+            SetupGl();
+
+            var init = new XRSessionInit
+            {
+                RequiredFeatures = new[] { "local" },
+                OptionalFeatures = new[] { "local-floor" },
+            };
+            _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, init);
+            try { _enabledFeatures = _session.EnabledFeatures; } catch { _enabledFeatures = null; }
+
+            _xrLayer = new XRWebGLLayer(_session, _gl, new XRWebGLLayerInit { Depth = true, Antialias = true });
+            _framebufferDim = $"{_xrLayer.FramebufferWidth} x {_xrLayer.FramebufferHeight}";
+            _session.UpdateRenderState(new XRRenderStateInit { BaseLayer = _xrLayer });
+
+            try
+            {
+                _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.LocalFloor);
+                _refSpaceTypeLabel = "local-floor";
+            }
+            catch
+            {
+                _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.Local);
+                _refSpaceTypeLabel = "local";
+            }
+
+            _session.OnEnd += OnSessionEnd;
+            _sessionActive = true;
+            _frameCount = 0;
+            _session.RequestAnimationFrame(OnXrFrame);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Enter VR failed: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
+            await CleanupAsync();
+        }
+        finally
+        {
+            _starting = false;
+            StateHasChanged();
+        }
+    }
+
+    void SetupGl()
+    {
+        if (_gl == null) return;
+
+        using var vert = _gl.CreateShader(GL.VERTEX_SHADER);
+        _gl.ShaderSource(vert, VertSrc);
+        _gl.CompileShader(vert);
+        if (!_gl.GetShaderParameter<bool>(vert, GL.COMPILE_STATUS))
+            throw new InvalidOperationException("Vertex shader: " + _gl.GetShaderInfoLog(vert));
+
+        using var frag = _gl.CreateShader(GL.FRAGMENT_SHADER);
+        _gl.ShaderSource(frag, FragSrc);
+        _gl.CompileShader(frag);
+        if (!_gl.GetShaderParameter<bool>(frag, GL.COMPILE_STATUS))
+            throw new InvalidOperationException("Fragment shader: " + _gl.GetShaderInfoLog(frag));
+
+        _program = _gl.CreateProgram();
+        _gl.AttachShader(_program, vert);
+        _gl.AttachShader(_program, frag);
+        _gl.LinkProgram(_program);
+        if (!_gl.GetProgramParameter<bool>(_program, GL.LINK_STATUS))
+            throw new InvalidOperationException("Link: " + _gl.GetProgramInfoLog(_program));
+
+        _uProjection = _gl.GetUniformLocation(_program, "u_projection");
+        _uView = _gl.GetUniformLocation(_program, "u_view");
+        _uModel = _gl.GetUniformLocation(_program, "u_model");
+
+        // Interleaved vertex format: pos (3 floats) + color (3 floats) = 24 bytes stride.
+        var verts = BuildVertices();
+        var indices = BuildIndices();
+
+        _vbo = _gl.CreateBuffer();
+        _gl.BindBuffer(GL.ARRAY_BUFFER, _vbo);
+        using (var vArr = new Float32Array(verts))
+            _gl.BufferData(GL.ARRAY_BUFFER, vArr, GL.STATIC_DRAW);
+
+        _ibo = _gl.CreateBuffer();
+        _gl.BindBuffer(GL.ELEMENT_ARRAY_BUFFER, _ibo);
+        using (var iArr = new Uint16Array(indices))
+            _gl.BufferData(GL.ELEMENT_ARRAY_BUFFER, iArr, GL.STATIC_DRAW);
+
+        _gl.EnableVertexAttribArray(0);
+        _gl.VertexAttribPointer(0, 3, GL.FLOAT, false, 24, 0);
+        _gl.EnableVertexAttribArray(1);
+        _gl.VertexAttribPointer(1, 3, GL.FLOAT, false, 24, 12);
+
+        _gl.Enable(GL.DEPTH_TEST);
+        _gl.DepthFunc(GL.LEQUAL);
+    }
+
+    static float[] BuildVertices()
+    {
+        // Cube corners (-0.5 .. +0.5) each assigned a distinct color.
+        // Color interpolation across faces gives a recognizable rainbow cube.
+        var v = new float[(CubeVertexCount + FloorVertexCount) * 6];
+        int k = 0;
+        // 0: -x -y -z : black
+        v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = 0.05f; v[k++] = 0.05f; v[k++] = 0.05f;
+        // 1: +x -y -z : red
+        v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = 1.0f;  v[k++] = 0.1f;  v[k++] = 0.1f;
+        // 2: +x +y -z : yellow
+        v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = 1.0f;  v[k++] = 1.0f;  v[k++] = 0.1f;
+        // 3: -x +y -z : green
+        v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = 0.1f;  v[k++] = 1.0f;  v[k++] = 0.1f;
+        // 4: -x -y +z : blue
+        v[k++] = -0.5f; v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = 0.1f;  v[k++] = 0.1f;  v[k++] = 1.0f;
+        // 5: +x -y +z : magenta
+        v[k++] =  0.5f; v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = 1.0f;  v[k++] = 0.1f;  v[k++] = 1.0f;
+        // 6: +x +y +z : white
+        v[k++] =  0.5f; v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = 1.0f;  v[k++] = 1.0f;  v[k++] = 1.0f;
+        // 7: -x +y +z : cyan
+        v[k++] = -0.5f; v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = 0.1f;  v[k++] = 1.0f;  v[k++] = 1.0f;
+
+        // Floor quad (10 x 10 meters at y=0), muted gray-blue.
+        const float F = 5f;
+        // 8: -X -Z
+        v[k++] = -F; v[k++] = 0f; v[k++] = -F; v[k++] = 0.22f; v[k++] = 0.24f; v[k++] = 0.30f;
+        // 9: +X -Z
+        v[k++] =  F; v[k++] = 0f; v[k++] = -F; v[k++] = 0.26f; v[k++] = 0.22f; v[k++] = 0.30f;
+        // 10: +X +Z
+        v[k++] =  F; v[k++] = 0f; v[k++] =  F; v[k++] = 0.22f; v[k++] = 0.30f; v[k++] = 0.26f;
+        // 11: -X +Z
+        v[k++] = -F; v[k++] = 0f; v[k++] =  F; v[k++] = 0.28f; v[k++] = 0.26f; v[k++] = 0.24f;
+        return v;
+    }
+
+    static ushort[] BuildIndices()
+    {
+        // Cube: 12 triangles. Culling is disabled, so winding doesn't matter.
+        // Floor: 2 triangles.
+        return new ushort[]
+        {
+            // -Z face (0,1,2,3)
+            0, 1, 2,   0, 2, 3,
+            // +Z face (4,5,6,7)
+            4, 5, 6,   4, 6, 7,
+            // -X face (0,3,7,4)
+            0, 3, 7,   0, 7, 4,
+            // +X face (1,2,6,5)
+            1, 2, 6,   1, 6, 5,
+            // -Y face (0,1,5,4)
+            0, 1, 5,   0, 5, 4,
+            // +Y face (3,2,6,7)
+            3, 2, 6,   3, 6, 7,
+            // Floor quad
+            8, 9, 10,  8, 10, 11,
+        };
+    }
+
+    void OnXrFrame(double time, XRFrame? frame)
+    {
+        if (!_sessionActive || frame == null || _session == null || _refSpace == null
+            || _gl == null || _xrLayer == null || _program == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _session.RequestAnimationFrame(OnXrFrame);
+
+            using var pose = frame.GetViewerPose(_refSpace);
+            if (pose == null) return;
+
+            using var fb = _xrLayer.Framebuffer;
+            _gl.BindFramebuffer(GL.FRAMEBUFFER, fb);
+            _gl.ClearColor(0.05f, 0.06f, 0.09f, 1f);
+            _gl.ClearDepth(1f);
+            _gl.Enable(GL.DEPTH_TEST);
+            _gl.DepthFunc(GL.LEQUAL);
+            _gl.DepthMask(true);
+            _gl.UseProgram(_program);
+
+            // Build per-cube model matrices once per frame.
+            float t = (float)(time / 1000.0);
+            var modelMatrices = new float[1 + _cubes.Length][];
+            modelMatrices[0] = Identity();
+            for (int i = 0; i < _cubes.Length; i++)
+            {
+                var c = _cubes[i];
+                modelMatrices[i + 1] = Compose(c.Pos, c.Axis, t * c.Speed, c.Scale);
+            }
+
+            int viewCount = 0;
+            int drawCount = 0;
+
+            foreach (var view in pose.Views)
+            {
+                using (view)
+                {
+                    using var vp = _xrLayer.GetViewport(view);
+                    _gl.Viewport(vp.X, vp.Y, vp.Width, vp.Height);
+                    if (viewCount == 0)
+                    {
+                        _gl.Clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+                    }
+
+                    using var proj = view.ProjectionMatrix;
+                    using var xform = view.Transform;
+                    using var xformInv = xform.Inverse;
+                    using var viewMat = xformInv.Matrix;
+
+                    _gl.UniformMatrix4fv(_uProjection!, false, proj);
+                    _gl.UniformMatrix4fv(_uView!, false, viewMat);
+
+                    // Draw floor (identity model).
+                    _gl.UniformMatrix4fv(_uModel!, false, modelMatrices[0]);
+                    _gl.DrawElements(GL.TRIANGLES, FloorIndexCount, GL.UNSIGNED_SHORT, FloorIndexOffsetBytes);
+                    drawCount++;
+
+                    // Draw each cube.
+                    for (int i = 0; i < _cubes.Length; i++)
+                    {
+                        _gl.UniformMatrix4fv(_uModel!, false, modelMatrices[i + 1]);
+                        _gl.DrawElements(GL.TRIANGLES, CubeIndexCount, GL.UNSIGNED_SHORT, CubeIndexOffsetBytes);
+                        drawCount++;
+                    }
+                    viewCount++;
+                }
+            }
+
+            _viewsPerFrame = viewCount;
+            _drawsPerFrame = drawCount;
+            _frameCount++;
+            if (_frameCount % 30 == 0) InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Frame {_frameCount}: {ex.GetType().Name}: {ex.Message}";
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    static float[] Identity() => new float[]
+    {
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+    };
+
+    // Compose: T(pos) * R(axis, angle) * S(scale). Column-major 4x4.
+    static float[] Compose(Vector3 pos, Vector3 axis, float angle, float scale)
+    {
+        float c = MathF.Cos(angle);
+        float s = MathF.Sin(angle);
+        float omc = 1f - c;
+        var n = Vector3.Normalize(axis);
+
+        // Axis-angle rotation matrix (column-major).
+        float r00 = c + n.X * n.X * omc;
+        float r01 = n.Y * n.X * omc + n.Z * s;
+        float r02 = n.Z * n.X * omc - n.Y * s;
+
+        float r10 = n.X * n.Y * omc - n.Z * s;
+        float r11 = c + n.Y * n.Y * omc;
+        float r12 = n.Z * n.Y * omc + n.X * s;
+
+        float r20 = n.X * n.Z * omc + n.Y * s;
+        float r21 = n.Y * n.Z * omc - n.X * s;
+        float r22 = c + n.Z * n.Z * omc;
+
+        // Multiply rotation columns by scale, then place translation in column 3.
+        return new float[]
+        {
+            r00 * scale, r01 * scale, r02 * scale, 0f,
+            r10 * scale, r11 * scale, r12 * scale, 0f,
+            r20 * scale, r21 * scale, r22 * scale, 0f,
+            pos.X,       pos.Y,       pos.Z,       1f,
+        };
+    }
+
+    void OnSessionEnd(XRSessionEvent e)
+    {
+        _sessionActive = false;
+        _ = CleanupAsync();
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitVrAsync()
+    {
+        if (_session != null)
+        {
+            try { await _session.End(); }
+            catch (Exception ex) { _errorMessage = $"Exit: {ex.Message}"; }
+        }
+    }
+
+    async Task CleanupAsync()
+    {
+        if (_session != null)
+        {
+            try { _session.OnEnd -= OnSessionEnd; } catch { }
+        }
+        _xrLayer?.Dispose(); _xrLayer = null;
+        _refSpace?.Dispose(); _refSpace = null;
+        _session?.Dispose(); _session = null;
+        _sessionActive = false;
+        _refSpaceTypeLabel = null;
+
+        _uProjection?.Dispose(); _uProjection = null;
+        _uView?.Dispose(); _uView = null;
+        _uModel?.Dispose(); _uModel = null;
+        _vbo?.Dispose(); _vbo = null;
+        _ibo?.Dispose(); _ibo = null;
+        _program?.Dispose(); _program = null;
+        _gl?.Dispose(); _gl = null;
+        _canvas?.Dispose(); _canvas = null;
+
+        await Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _sessionActive = false;
+        await CleanupAsync();
+    }
+
+    static string PathColor(RenderPath p) => p switch
+    {
+        RenderPath.FullWebGpu => "#4ade80",
+        RenderPath.HybridWebGl2 => "#facc15",
+        RenderPath.WebGpuOnly => "#60a5fa",
+        RenderPath.None => "#ef4444",
+        _ => "#888",
+    };
+}
