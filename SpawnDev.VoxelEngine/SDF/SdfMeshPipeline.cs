@@ -26,7 +26,7 @@ namespace SpawnDev.VoxelEngine.SDF
         private readonly Action<Index3D, ArrayView<short>, ArrayView<int>, ArrayView<int>, int> _classifyKernel;
         private readonly Action<Index1D, ArrayView<int>, ArrayView<short>, ArrayView<int>, ArrayView<float>, ArrayView<float>, int, float, float, float, float, int> _vertexKernel;
         private readonly Action<Index3D, ArrayView<short>, ArrayView<int>, ArrayView<int>, ArrayView<int>, int, int> _quadKernel;
-        private readonly Action<Index3D, ArrayView<short>, float, float, float, float, int, float, float, float, float, int> _modifyKernel;
+        private readonly Action<Index3D, ArrayView<short>, float, float, float, float, int, float, float, float, float, float, int> _modifyKernel;
 
         // Shared buffers (reused across calls)
         private MemoryBuffer1D<int, Stride1D.Dense>? _cellMaskBuffer;
@@ -60,7 +60,7 @@ namespace SpawnDev.VoxelEngine.SDF
                 DualMarchingCubesKernels.GenerateQuadsKernel);
 
             _modifyKernel = accelerator.LoadAutoGroupedStreamKernel<
-                Index3D, ArrayView<short>, float, float, float, float, int, float, float, float, float, int>(
+                Index3D, ArrayView<short>, float, float, float, float, int, float, float, float, float, float, int>(
                 SdfNoiseKernels.ModifySdfSphereKernel);
 
             IsReady = true;
@@ -129,9 +129,9 @@ namespace SpawnDev.VoxelEngine.SDF
             using var gpuActiveCellIds = _accelerator.Allocate1D(activeCellIds.AsSpan(0, activeCellCount).ToArray());
             _cellToVertexBuffer!.CopyFromCPU(cellToVertex);
 
-            // Step 3: Generate dual vertices
-            var vertexPositions = _accelerator.Allocate1D<float>(activeCellCount * 6); // xyz per vertex
-            var vertexNormals = _accelerator.Allocate1D<float>(activeCellCount * 3); // xyz per normal
+            // Step 3: Generate dual vertices (3 floats per vertex for both positions and normals).
+            var vertexPositions = _accelerator.Allocate1D<float>(activeCellCount * 3);
+            var vertexNormals = _accelerator.Allocate1D<float>(activeCellCount * 3);
 
             _vertexKernel((Index1D)activeCellCount,
                 gpuActiveCellIds.View, sdfBuffer.View, _cellCasesBuffer!.View,
@@ -180,16 +180,17 @@ namespace SpawnDev.VoxelEngine.SDF
         /// <summary>
         /// Modify SDF values in a sphere (terrain deformation).
         /// After calling this, re-mesh the affected chunk(s).
+        /// <paramref name="blendRadius"/> controls smooth-CSG blend width (1.0 = default).
         /// </summary>
         public async Task ModifySpherAsync(
             MemoryBuffer1D<short, Stride1D.Dense> sdfBuffer,
             int chunkSize, float chunkWorldX, float chunkWorldY, float chunkWorldZ,
             float voxelSize,
             float centerX, float centerY, float centerZ,
-            float radius, int mode)
+            float radius, int mode, float blendRadius = 1f)
         {
             _modifyKernel(new Index3D(chunkSize, chunkSize, chunkSize),
-                sdfBuffer.View, centerX, centerY, centerZ, radius, mode,
+                sdfBuffer.View, centerX, centerY, centerZ, radius, mode, blendRadius,
                 chunkWorldX, chunkWorldY, chunkWorldZ, voxelSize, chunkSize);
             await _accelerator.SynchronizeAsync();
         }

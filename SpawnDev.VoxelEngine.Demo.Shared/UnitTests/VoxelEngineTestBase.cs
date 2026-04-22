@@ -8,31 +8,34 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 {
     /// <summary>
     /// Base class for voxel engine tests. Backend-specific test classes inherit this
-    /// and implement CreateAcceleratorAsync to select their backend.
+    /// and MUST override CreateAcceleratorAsync to force selection of a single backend.
+    /// Do NOT fall back to CreatePreferredAcceleratorAsync - the "one class per backend,
+    /// each with its own accelerator override" shape is what makes the test suite a real
+    /// cross-backend verification rather than the preferred backend running under six
+    /// different class labels.
     /// </summary>
     public abstract partial class VoxelEngineTestBase : IDisposable
     {
         public abstract string BackendName { get; }
 
+        /// <summary>
+        /// Expected substring in accelerator.GetType().Name for the per-backend identity
+        /// sanity test. Defaults to BackendName; override only when the accelerator type
+        /// name differs from the display name (e.g. OpenCL -> CLAccelerator).
+        /// </summary>
+        protected virtual string ExpectedAcceleratorTypeName => BackendName;
+
         private Context? _cachedContext;
         private Accelerator? _cachedAccelerator;
 
         /// <summary>
-        /// Creates the ILGPU context and accelerator for this backend.
-        /// Override in backend-specific classes.
-        /// Default implementation uses preferred accelerator.
+        /// Creates the ILGPU context and accelerator for THIS backend. Must be overridden
+        /// by each backend-specific class. Implementations MUST NOT call
+        /// CreatePreferredAcceleratorAsync - that silently collapses to whichever backend
+        /// has the highest priority, which defeats the whole point of per-class backend
+        /// verification. If the backend isn't available, throw UnsupportedTestException.
         /// </summary>
-        protected virtual async Task<(Context context, Accelerator accelerator)> CreateAcceleratorAsync()
-        {
-            var context = await Context.CreateAsync(builder => builder.AllAcceleratorsAsync());
-            var accelerator = await SpawnDev.ILGPU.SpawnDevContextExtensions.CreatePreferredAcceleratorAsync(context);
-            if (accelerator == null)
-            {
-                context.Dispose();
-                throw new Exception($"No accelerator available for backend: {BackendName}");
-            }
-            return (context, accelerator);
-        }
+        protected abstract Task<(Context context, Accelerator accelerator)> CreateAcceleratorAsync();
 
         /// <summary>
         /// Run a test with the cached accelerator. Creates it on first use.
@@ -55,6 +58,27 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             _cachedAccelerator = null;
             _cachedContext = null;
         }
+    }
+
+    // Backend identity sanity test - proves each backend class actually selects its own
+    // backend. If this test passes, every other test in the class is running on the
+    // labeled backend and the pass/fail numbers are trustworthy across the sweep.
+    public partial class VoxelEngineTestBase
+    {
+        [TestMethod]
+        public async Task Accelerator_ReportsExpectedBackend() => await RunTest(accelerator =>
+        {
+            var actualTypeName = accelerator.GetType().Name;
+            if (actualTypeName.IndexOf(ExpectedAcceleratorTypeName, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                throw new Exception(
+                    $"Backend identity mismatch for test class {GetType().Name} (BackendName='{BackendName}'): " +
+                    $"expected accelerator type name to contain '{ExpectedAcceleratorTypeName}' but got '{actualTypeName}' " +
+                    $"(AcceleratorType={accelerator.AcceleratorType}, Device='{accelerator.Device.Name}'). " +
+                    "CreateAcceleratorAsync override is missing or wrong - the test would silently run on the preferred backend.");
+            }
+            return Task.CompletedTask;
+        });
     }
 
     // Face culling tests - verify GPU output matches CPU reference exactly

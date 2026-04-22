@@ -136,38 +136,48 @@ namespace SpawnDev.VoxelEngine.SDF
         }
 
         // ===================================================================
-        // SDF Boolean Operations (Inigo Quilez formulas)
+        // SDF Boolean Operations - positive-inside convention
         // ===================================================================
+        // This codebase uses positive = solid, negative = air (inverted from
+        // Inigo Quilez's classical formulas). All operators below are written
+        // for positive-inside data.
 
-        /// <summary>Union: merge two solids. min(a, b).</summary>
-        private static float SdfUnion(float a, float b) => a < b ? a : b;
+        /// <summary>Union: inside either A or B. max(a, b).</summary>
+        private static float SdfUnion(float a, float b) => a > b ? a : b;
 
-        /// <summary>Subtraction: carve a from b. max(-a, b).</summary>
-        private static float SdfSubtract(float a, float b) => (-a) > b ? (-a) : b;
+        /// <summary>Subtraction: carve A from B. Inside B AND NOT inside A = min(-a, b).</summary>
+        private static float SdfSubtract(float a, float b)
+        {
+            float nega = -a;
+            return nega < b ? nega : b;
+        }
 
-        /// <summary>Intersection: keep only overlap. max(a, b).</summary>
-        private static float SdfIntersect(float a, float b) => a > b ? a : b;
+        /// <summary>Intersection: inside both A and B. min(a, b).</summary>
+        private static float SdfIntersect(float a, float b) => a < b ? a : b;
 
         /// <summary>
-        /// Smooth union: merge with rounded blend.
+        /// Smooth union (positive-inside): smooth max of A and B.
         /// k controls blend radius (larger k = smoother transition).
+        /// Derived from classical smin: smax(a,b,k) = -smin(-a,-b,k).
         /// </summary>
         private static float SdfSmoothUnion(float a, float b, float k)
         {
-            float h = a - b;
-            if (h < 0) h = -h;
-            h = 0.5f + 0.5f * (b - a) / k;
+            float h = 0.5f + 0.5f * (a - b) / k;
             if (h < 0) h = 0;
             if (h > 1) h = 1;
-            return Lerp(b, a, h) - k * h * (1f - h);
+            return Lerp(b, a, h) + k * h * (1f - h);
         }
 
         /// <summary>
-        /// Smooth subtraction: carve with rounded edges.
+        /// Smooth subtraction (positive-inside): carve A from B with rounded edges.
+        /// Equivalent to classical smin(-A, B): inside B but not inside A.
         /// </summary>
         private static float SdfSmoothSubtract(float a, float b, float k)
         {
-            return -SdfSmoothUnion(-a, b, k);
+            float h = 0.5f + 0.5f * (a + b) / k;
+            if (h < 0) h = 0;
+            if (h > 1) h = 1;
+            return Lerp(b, -a, h) - k * h * (1f - h);
         }
 
         // ===================================================================
@@ -260,7 +270,10 @@ namespace SpawnDev.VoxelEngine.SDF
 
         /// <summary>
         /// Modify SDF values in a sphere (terrain deformation tool).
-        /// mode: 0 = subtract (dig), 1 = add (fill)
+        /// mode: 0 = subtract (dig), 1 = add (fill).
+        /// blendRadius controls the smooth-union/subtract blend width (k). Larger
+        /// values produce softer, explosion-like edges; smaller values produce
+        /// crisper cuts. Clamped to a small positive minimum to avoid div-by-zero.
         ///
         /// Dispatch: one thread per voxel in affected region.
         /// </summary>
@@ -270,6 +283,7 @@ namespace SpawnDev.VoxelEngine.SDF
             float centerX, float centerY, float centerZ,
             float radius,
             int mode,
+            float blendRadius,
             float chunkWorldX, float chunkWorldY, float chunkWorldZ,
             float voxelSize,
             int chunkSize)
@@ -278,55 +292,76 @@ namespace SpawnDev.VoxelEngine.SDF
             int y = index.Y;
             int z = index.Z;
 
+            // Thread-bounds: out-of-range threads have no valid write index. This early-return
+            // is the only one in the kernel - every in-range thread always reaches the write
+            // at the bottom, with either the unchanged original value or the modified value.
+            // WebGL Transform Feedback cannot "skip" a write the way a compute shader can;
+            // anything that didn't write produces 0 for its output slot. So the "did we modify
+            // this voxel?" decision has to live in the value path (preserve-or-modify), not in
+            // the control flow path (return-or-write).
             if (x >= chunkSize || y >= chunkSize || z >= chunkSize) return;
 
-            float wx = chunkWorldX + x * voxelSize;
-            float wy = chunkWorldY + y * voxelSize;
-            float wz = chunkWorldZ + z * voxelSize;
-
-            // SDF of sphere: distance from center minus radius
-            float dx = wx - centerX;
-            float dy = wy - centerY;
-            float dz = wz - centerZ;
-            float dist = dx * dx + dy * dy + dz * dz;
-
-            // Fast sqrt approximation for GPU
-            // Only process voxels near the sphere
-            if (dist > (radius + 4f) * (radius + 4f)) return;
-
-            // Actual distance
-            float sqrtDist = dist;
-            // Newton-Raphson sqrt (3 iterations for good precision)
-            if (sqrtDist > 0)
-            {
-                float guess = sqrtDist * 0.5f;
-                guess = 0.5f * (guess + sqrtDist / guess);
-                guess = 0.5f * (guess + sqrtDist / guess);
-                guess = 0.5f * (guess + sqrtDist / guess);
-                sqrtDist = guess;
-            }
-
-            float sphereSdf = sqrtDist - radius;
-
             int idx = x + z * chunkSize + y * chunkSize * chunkSize;
-            float currentSdf = sdfValues[idx] / SdfChunk.FixedPointScale;
+            short currentRaw = sdfValues[idx];
+            short newRaw = currentRaw;
 
-            float newSdf;
-            if (mode == 0)
+            if (radius > 0f)
             {
-                // Subtract (dig): carve sphere from terrain
-                newSdf = SdfSmoothSubtract(-sphereSdf, currentSdf, 1f);
-            }
-            else
-            {
-                // Add (fill): merge sphere into terrain
-                newSdf = SdfSmoothUnion(sphereSdf, currentSdf, 1f);
+                float wx = chunkWorldX + x * voxelSize;
+                float wy = chunkWorldY + y * voxelSize;
+                float wz = chunkWorldZ + z * voxelSize;
+
+                // SDF of sphere: distance from center minus radius.
+                float dx = wx - centerX;
+                float dy = wy - centerY;
+                float dz = wz - centerZ;
+                float dist = dx * dx + dy * dy + dz * dz;
+
+                // Influence region: (radius + blendRadius + 1) so voxels whose smooth-blend
+                // contribution is numerically meaningful get the math; everyone else preserves.
+                float rejectR = radius + blendRadius + 1f;
+                if (dist <= rejectR * rejectR)
+                {
+                    // Newton-Raphson sqrt (3 iterations) - the GPU-portable sqrt used elsewhere.
+                    float sqrtDist = dist;
+                    if (sqrtDist > 0)
+                    {
+                        float guess = sqrtDist * 0.5f;
+                        guess = 0.5f * (guess + sqrtDist / guess);
+                        guess = 0.5f * (guess + sqrtDist / guess);
+                        guess = 0.5f * (guess + sqrtDist / guess);
+                        sqrtDist = guess;
+                    }
+
+                    // Positive-inside sphere SDF: positive inside, negative outside.
+                    float sphereSdf = radius - sqrtDist;
+
+                    // Guard against zero/negative blend radius (would divide by zero in smin/smax).
+                    float k = blendRadius;
+                    if (k < 0.001f) k = 0.001f;
+
+                    float currentSdf = currentRaw / SdfChunk.FixedPointScale;
+
+                    float newSdf;
+                    if (mode == 0)
+                    {
+                        // Subtract (dig): carve sphere from terrain.
+                        newSdf = SdfSmoothSubtract(sphereSdf, currentSdf, k);
+                    }
+                    else
+                    {
+                        // Add (fill): merge sphere into terrain.
+                        newSdf = SdfSmoothUnion(sphereSdf, currentSdf, k);
+                    }
+
+                    float clamped = newSdf;
+                    if (clamped > 127f) clamped = 127f;
+                    if (clamped < -128f) clamped = -128f;
+                    newRaw = (short)(clamped * SdfChunk.FixedPointScale);
+                }
             }
 
-            float clamped = newSdf;
-            if (clamped > 127f) clamped = 127f;
-            if (clamped < -128f) clamped = -128f;
-            sdfValues[idx] = (short)(clamped * SdfChunk.FixedPointScale);
+            sdfValues[idx] = newRaw;
         }
     }
 }
