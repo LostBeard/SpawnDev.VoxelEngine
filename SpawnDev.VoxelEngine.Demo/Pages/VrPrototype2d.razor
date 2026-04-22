@@ -371,7 +371,7 @@ void main() {
             BitConverter.TryWriteBytes(bytes.AsSpan(12, 4), (uint)0);
             using (var u8 = new Uint8Array(bytes))
             {
-                _device!.Queue.JSRef!.CallVoid("writeBuffer", _paramsBuffer, 0, u8);
+                _device!.Queue.WriteBuffer(_paramsBuffer!, 0, u8);
             }
 
             // Compute pass
