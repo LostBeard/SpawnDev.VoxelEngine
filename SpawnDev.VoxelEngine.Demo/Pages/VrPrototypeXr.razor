@@ -1,0 +1,53 @@
+@page "/vr-prototype-xr"
+@using SpawnDev.BlazorJS
+@using SpawnDev.VoxelEngine.Rendering
+
+<PageTitle>VR Prototype (XR session)</PageTitle>
+
+<h3>VR Prototype - WebXR session (Phase VR.1b)</h3>
+
+<p>
+    Wraps the 2D measurement rig in a WebXR session. Renders the same scene to the headset through whichever
+    render path the browser supports: <code>FullWebGpu</code> (via <code>XRGPUBinding</code>) or
+    <code>HybridWebGl2</code> (via <code>XRWebGLLayer</code> with the ImageBitmap bridge).
+</p>
+
+<p style="color:#facc15;">
+    <strong>Status:</strong> Placeholder. XR session wiring shipping after VR.1a (2D measurement) is proven.
+    <br />
+    Current render path reported by the probe:
+    @if (_report != null)
+    {
+        <code style="color:@PathColor(_report.Path)">@_report.Path</code>
+    }
+    else
+    {
+        <em>probing...</em>
+    }
+</p>
+
+<p style="color:#888;font-size:0.9em;">
+    This page is the Quest 3S-facing VR test. Once shipped, click "Enter VR" in the headset-side Meta Quest Browser
+    (this page served over HTTPS per the WebXR secure-context requirement) and the rotating scene renders at 90 fps.
+    Timing overlay reports frame deltas for ongoing comparison against the VR.1a desktop baseline.
+</p>
+
+@inject BlazorJSRuntime JS
+
+@code {
+    RenderPathReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _report = await RenderPathDetector.DetectAsync(JS);
+    }
+
+    static string PathColor(RenderPath p) => p switch
+    {
+        RenderPath.FullWebGpu => "#4ade80",
+        RenderPath.HybridWebGl2 => "#facc15",
+        RenderPath.WebGpuOnly => "#60a5fa",
+        RenderPath.None => "#ef4444",
+        _ => "#888",
+    };
+}

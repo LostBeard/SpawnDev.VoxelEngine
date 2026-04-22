@@ -47,7 +47,8 @@ namespace SpawnDev.VoxelEngine.Rendering
         bool HasWebGpu,
         bool HasImmersiveVr,
         bool HasImmersiveAr,
-        bool HasXRGPUBinding,
+        bool HasXRGPUBindingClass,
+        bool HasXRGPUBindingMethods,
         string? AdapterVendor,
         string? AdapterArchitecture,
         string? AdapterDescription,
@@ -60,11 +61,19 @@ namespace SpawnDev.VoxelEngine.Rendering
         int SubgroupMaxSize)
     {
         /// <summary>
+        /// Binding is usable only when BOTH the class name is exposed AND the expected prototype
+        /// methods exist. Typeof-only detection can false-positive on stub classes shipped ahead of
+        /// their backing implementation.
+        /// </summary>
+        public bool HasXRGPUBinding => HasXRGPUBindingClass && HasXRGPUBindingMethods;
+
+        /// <summary>
         /// Empty report for the no-WebGPU case.
         /// </summary>
         public static RenderPathReport None() => new(
             Path: RenderPath.None,
-            HasWebGpu: false, HasImmersiveVr: false, HasImmersiveAr: false, HasXRGPUBinding: false,
+            HasWebGpu: false, HasImmersiveVr: false, HasImmersiveAr: false,
+            HasXRGPUBindingClass: false, HasXRGPUBindingMethods: false,
             AdapterVendor: null, AdapterArchitecture: null, AdapterDescription: null,
             IsFallbackAdapter: false, HasShaderF16: false, HasSubgroups: false, HasTimestampQuery: false,
             MaxStorageBuffersPerShaderStage: 0, SubgroupMinSize: 0, SubgroupMaxSize: 0);
@@ -105,10 +114,22 @@ namespace SpawnDev.VoxelEngine.Rendering
             }
 
             // WebXR+WebGPU binding: the XRGPUBinding class is exposed at the global scope when the
-            // `WebXR/WebGPU Bindings` flag is on (Chrome Canary 135+) and eventually when the spec
-            // ships stable. typeof check is the documented feature-detection pattern per the
-            // spec explainer.
-            bool hasXRGPUBinding = !js.IsUndefined("XRGPUBinding");
+            // `WebXR/WebGPU Bindings` flag is on (Chrome Canary 135+) and when the spec ships stable.
+            // Two-stage check because a class can be defined as a name-only stub ahead of its backing
+            // implementation:
+            //   (1) typeof XRGPUBinding !== 'undefined'  -- class name present
+            //   (2) expected methods present on the prototype -- backing impl is wired up
+            // Only treat the binding as usable when BOTH pass; "HasXRGPUBindingClass && !Methods" is
+            // the stub-class signal and should route the consumer to the hybrid fallback.
+            bool hasXRGPUBindingClass = !js.IsUndefined("XRGPUBinding");
+            bool hasXRGPUBindingMethods = false;
+            if (hasXRGPUBindingClass)
+            {
+                hasXRGPUBindingMethods =
+                    js.TypeOf("XRGPUBinding.prototype.createProjectionLayer") == "function"
+                    && js.TypeOf("XRGPUBinding.prototype.getViewSubImage") == "function"
+                    && js.TypeOf("XRGPUBinding.prototype.getPreferredColorFormat") == "function";
+            }
 
             // Probe adapter info + features + limits. Do NOT call requestDevice - that "consumes"
             // the adapter and we just want capability info here.
@@ -124,12 +145,14 @@ namespace SpawnDev.VoxelEngine.Rendering
             using var features = adapter.Features;
             using var limits = adapter.Limits;
 
+            bool hasUsableBinding = hasXRGPUBindingClass && hasXRGPUBindingMethods;
             var report = new RenderPathReport(
-                Path: ChoosePath(hasImmersiveVr, hasXRGPUBinding),
+                Path: ChoosePath(hasImmersiveVr, hasUsableBinding),
                 HasWebGpu: true,
                 HasImmersiveVr: hasImmersiveVr,
                 HasImmersiveAr: hasImmersiveAr,
-                HasXRGPUBinding: hasXRGPUBinding,
+                HasXRGPUBindingClass: hasXRGPUBindingClass,
+                HasXRGPUBindingMethods: hasXRGPUBindingMethods,
                 AdapterVendor: info?.Vendor,
                 AdapterArchitecture: info?.Architecture,
                 AdapterDescription: info?.Description,
@@ -144,8 +167,8 @@ namespace SpawnDev.VoxelEngine.Rendering
             return report;
         }
 
-        static RenderPath ChoosePath(bool hasImmersiveVr, bool hasXRGPUBinding) =>
-            (hasImmersiveVr, hasXRGPUBinding) switch
+        static RenderPath ChoosePath(bool hasImmersiveVr, bool hasUsableBinding) =>
+            (hasImmersiveVr, hasUsableBinding) switch
             {
                 (true, true) => RenderPath.FullWebGpu,
                 (true, false) => RenderPath.HybridWebGl2,

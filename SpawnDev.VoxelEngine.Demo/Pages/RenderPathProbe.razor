@@ -25,7 +25,9 @@ else
   WebGPU                        : @Mark(_report.HasWebGpu)
   WebXR immersive-vr            : @Mark(_report.HasImmersiveVr)
   WebXR immersive-ar            : @Mark(_report.HasImmersiveAr)
-  WebXR+WebGPU binding          : @Mark(_report.HasXRGPUBinding)
+  XRGPUBinding class present    : @Mark(_report.HasXRGPUBindingClass)
+  XRGPUBinding methods present  : @Mark(_report.HasXRGPUBindingMethods)@BindingMethodsNote(_report)
+  WebXR+WebGPU binding usable   : @Mark(_report.HasXRGPUBinding)
 
 === Adapter ===
   Vendor                        : @(_report.AdapterVendor ?? "(unavailable)")
@@ -61,6 +63,11 @@ else
     }
 
     static string Mark(bool v) => v ? "✓ yes" : "✗ no ";
+
+    static string BindingMethodsNote(RenderPathReport r) =>
+        r.HasXRGPUBindingClass && !r.HasXRGPUBindingMethods
+            ? "  <-- STUB: class name exposed but createProjectionLayer/getViewSubImage/getPreferredColorFormat missing. Binding not yet usable."
+            : "";
 
     static string PathColor(RenderPath p) => p switch
     {

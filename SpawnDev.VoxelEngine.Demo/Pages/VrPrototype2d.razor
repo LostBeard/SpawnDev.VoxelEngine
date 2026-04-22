@@ -1,0 +1,58 @@
+@page "/vr-prototype-2d"
+@using SpawnDev.BlazorJS
+@using SpawnDev.VoxelEngine.Rendering
+
+<PageTitle>VR Prototype (2D measurement)</PageTitle>
+
+<h3>VR Prototype - 2D measurement rig (Phase VR.1a)</h3>
+
+<p>
+    This page measures whether the hybrid fallback render path can hit a 90 fps VR budget on Quest 3S native browser.
+    Runs the same scene through two render paths side-by-side, logs per-frame timing, and reports the answer.
+</p>
+
+<ul>
+    <li><strong>Path A (direct):</strong> WebGPU compute shader writes animated gradient to a GPUTexture; WebGPU renders that texture to a canvas via <code>GPUCanvasContext</code>.</li>
+    <li><strong>Path B (hybrid):</strong> Same compute output, rendered to an <code>OffscreenCanvas</code> via WebGPU, then <code>transferToImageBitmap()</code> + <code>WebGL2.texImage2D(imageBitmap)</code> + WebGL2 draws a full-screen quad to a canvas.</li>
+</ul>
+
+<p style="color:#facc15;">
+    <strong>Status:</strong> Placeholder. Measurement pipeline shipping in the next commit.
+    <br />
+    Current render path reported by the probe:
+    @if (_report != null)
+    {
+        <code style="color:@PathColor(_report.Path)">@_report.Path</code>
+    }
+    else
+    {
+        <em>probing...</em>
+    }
+</p>
+
+<p style="color:#888;font-size:0.9em;">
+    If you land here before the measurement code ships, visit <a href="render-path">/render-path</a>
+    to see the full capability report. The measurement will branch behavior based on the detected path:
+    FullWebGpu skips the WebGL2 bridge entirely (native primary path); HybridWebGl2 measures the bridge overhead
+    head-to-head against the direct path; WebGpuOnly runs desktop 2D for dev iteration.
+</p>
+
+@inject BlazorJSRuntime JS
+
+@code {
+    RenderPathReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _report = await RenderPathDetector.DetectAsync(JS);
+    }
+
+    static string PathColor(RenderPath p) => p switch
+    {
+        RenderPath.FullWebGpu => "#4ade80",
+        RenderPath.HybridWebGl2 => "#facc15",
+        RenderPath.WebGpuOnly => "#60a5fa",
+        RenderPath.None => "#ef4444",
+        _ => "#888",
+    };
+}
