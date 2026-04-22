@@ -1,0 +1,88 @@
+@page "/render-path"
+@using SpawnDev.BlazorJS
+@using SpawnDev.VoxelEngine.Rendering
+
+<PageTitle>Render Path Probe</PageTitle>
+
+<h3>Render Path Capability Probe</h3>
+<p style="color:#888;">
+    Detects which <code>RenderPath</code> the current browser supports and shows the full capability report.
+    Decided at consumer app init per <code>Lost/Plans/PLAN-VR-Render-Architecture.md</code>.
+</p>
+
+@if (_report == null)
+{
+    <p><em>Probing...</em></p>
+}
+else
+{
+    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;white-space:pre-wrap;">
+<span style="color:@PathColor(_report.Path);font-size:1.4em;">Render Path: <strong>@_report.Path</strong></span>
+
+@PathExplanation(_report.Path)
+
+=== Capability flags ===
+  WebGPU                        : @Mark(_report.HasWebGpu)
+  WebXR immersive-vr            : @Mark(_report.HasImmersiveVr)
+  WebXR immersive-ar            : @Mark(_report.HasImmersiveAr)
+  WebXR+WebGPU binding          : @Mark(_report.HasXRGPUBinding)
+
+=== Adapter ===
+  Vendor                        : @(_report.AdapterVendor ?? "(unavailable)")
+  Architecture                  : @(_report.AdapterArchitecture ?? "(unavailable)")
+  Description                   : @(_report.AdapterDescription ?? "(unavailable)")
+  Fallback adapter              : @Mark(_report.IsFallbackAdapter) @(_report.IsFallbackAdapter ? " <-- WARNING: software fallback, perf will be bad" : "")
+
+=== Features ===
+  shader-f16                    : @Mark(_report.HasShaderF16)  @(_report.HasShaderF16 ? " (2x arithmetic throughput, halves memory bandwidth)" : "")
+  subgroups                     : @Mark(_report.HasSubgroups)  @(_report.HasSubgroups ? $" (min {_report.SubgroupMinSize} / max {_report.SubgroupMaxSize})" : "")
+  timestamp-query               : @Mark(_report.HasTimestampQuery)
+
+=== Limits ===
+  maxStorageBuffersPerShaderStage : @_report.MaxStorageBuffersPerShaderStage  (WebGPU spec min: 8, desktop Chrome: 10, Quest 3S: 16)
+    </div>
+
+    <hr />
+    <p>
+        For the full capability dump including every feature and limit, visit
+        <a href="https://webgpureport.org/" target="_blank">webgpureport.org</a>.
+        This page is a focused probe for Lost Spawns' architecture decisions.
+    </p>
+}
+
+@inject BlazorJSRuntime JS
+
+@code {
+    RenderPathReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _report = await RenderPathDetector.DetectAsync(JS);
+    }
+
+    static string Mark(bool v) => v ? "✓ yes" : "✗ no ";
+
+    static string PathColor(RenderPath p) => p switch
+    {
+        RenderPath.FullWebGpu => "#4ade80",     // green
+        RenderPath.HybridWebGl2 => "#facc15",   // yellow
+        RenderPath.WebGpuOnly => "#60a5fa",     // blue
+        RenderPath.None => "#ef4444",           // red
+        _ => "#888",
+    };
+
+    static string PathExplanation(RenderPath p) => p switch
+    {
+        RenderPath.FullWebGpu =>
+            "  Full WebGPU end-to-end. Primary path per VR architecture plan.\n" +
+            "  Compute + render both on WebGPU; WebXR+WebGPU binding wires them to the headset.",
+        RenderPath.HybridWebGl2 =>
+            "  WebGPU compute + WebGL2 XR render (hybrid). Shipping path on Meta Quest Browser today.\n" +
+            "  Compute runs on WebGPU; render via OffscreenCanvas + transferToImageBitmap into WebGL2 XR framebuffer.",
+        RenderPath.WebGpuOnly =>
+            "  WebGPU available, no WebXR VR. Desktop browser path, non-VR.",
+        RenderPath.None =>
+            "  No WebGPU available. Consumer apps show an unsupported-browser page.",
+        _ => "  (unknown)",
+    };
+}
