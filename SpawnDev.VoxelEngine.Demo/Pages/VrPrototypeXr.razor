@@ -44,15 +44,25 @@
 </div>
 
 <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;">
-    <div>Session active       : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
-    <div>Enabled features     : @(_enabledFeatures == null ? "(none yet)" : string.Join(", ", _enabledFeatures))</div>
-    <div>First frame at (ms)  : @(_firstFrameTime?.ToString("0") ?? "(no frame received)")</div>
-    <div>Frames rendered      : @_frameCount</div>
-    <div>Poses skipped        : @_posesSkipped  <span style="color:#888">(frame fired but getViewerPose returned null)</span></div>
-    <div>Views per frame      : @_viewsPerFrame</div>
-    <div>Preferred color fmt  : @(_colorFormat ?? "(not yet resolved)")</div>
-    <div>Last clear color     : @_lastColorDisplay</div>
-    <div>Reference space type : @(_refSpace == null ? "(none)" : _refSpaceTypeLabel)</div>
+    <div>Session active         : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
+    <div>'webgpu' feature req   : <span style="color:@(_webGpuFeatureGranted ? "#4ade80" : "#facc15")">@(_webGpuFeatureGranted ? "granted" : "rejected (fallback to plain session)")</span></div>
+    @if (!_webGpuFeatureGranted && !string.IsNullOrEmpty(_webGpuFeatureRejectionMessage))
+    {
+        <div style="color:#888;padding-left:24px;">(@_webGpuFeatureRejectionMessage)</div>
+    }
+    <div>XRGPUBinding ctor      : <span style="color:@(_bindingConstructed ? "#4ade80" : "#ef4444")">@(_bindingConstructed ? "succeeded" : "failed")</span></div>
+    @if (!_bindingConstructed && !string.IsNullOrEmpty(_bindingConstructionError))
+    {
+        <div style="color:#888;padding-left:24px;">(@_bindingConstructionError)</div>
+    }
+    <div>Enabled features       : @(_enabledFeatures == null ? "(none yet)" : string.Join(", ", _enabledFeatures))</div>
+    <div>First frame at (ms)    : @(_firstFrameTime?.ToString("0") ?? "(no frame received)")</div>
+    <div>Frames rendered        : @_frameCount</div>
+    <div>Poses skipped          : @_posesSkipped  <span style="color:#888">(frame fired but getViewerPose returned null)</span></div>
+    <div>Views per frame        : @_viewsPerFrame</div>
+    <div>Preferred color fmt    : @(_colorFormat ?? "(not yet resolved)")</div>
+    <div>Last clear color       : @_lastColorDisplay</div>
+    <div>Reference space type   : @(_refSpace == null ? "(none)" : _refSpaceTypeLabel)</div>
 </div>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
@@ -118,6 +128,10 @@ fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
     string _lastColorDisplay = "";
     string? _errorMessage;
     string[]? _enabledFeatures;
+    bool _webGpuFeatureGranted;
+    string? _webGpuFeatureRejectionMessage;
+    bool _bindingConstructed;
+    string? _bindingConstructionError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -141,22 +155,59 @@ fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
                 ?? throw new InvalidOperationException("requestAdapter returned null");
             _device = await _adapter.RequestDevice();
 
-            // `webgpu` is the critical feature: without it requested, the session creates fine
-            // but XRGPUBinding produces non-presenting textures (loader screen hangs forever).
-            // `layers` is needed for the WebXR Layers module (which XRProjectionLayer is part of).
-            // `local` is the basic reference-space we need; `local-floor` is nicer if available.
-            var init = new XRSessionInit
+            // Canonical immersive-web/webxr-samples/webgpu/vr-barebones.html uses
+            //   requiredFeatures: ['webgpu']
+            // per the spec proposal. Empirically (2026-04-22):
+            //   - Meta Quest Browser v146.0 native:  'webgpu' feature NOT fulfillable
+            //   - Meta Immersive Web Emulator:       'webgpu' feature NOT fulfillable
+            // Both expose XRGPUBinding class + prototype methods (passes our probe's
+            // method-existence check) but neither has implemented the session-level
+            // 'webgpu' feature integration. API surface is a forward-compat stub.
+            //
+            // Try 'webgpu' first (for future-compat); fall back to plain session if
+            // rejected so we can at least characterize where the binding actually
+            // breaks vs where the feature-gate rejects us.
+            try
             {
-                RequiredFeatures = new[] { "local", "webgpu" },
-                OptionalFeatures = new[] { "local-floor", "layers" },
-            };
-            _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, init);
+                _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, new XRSessionInit
+                {
+                    RequiredFeatures = new[] { "local", "webgpu" },
+                    OptionalFeatures = new[] { "local-floor", "layers" },
+                });
+                _webGpuFeatureGranted = true;
+            }
+            catch (Exception featureEx)
+            {
+                _webGpuFeatureGranted = false;
+                _webGpuFeatureRejectionMessage = featureEx.Message;
+                _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, new XRSessionInit
+                {
+                    RequiredFeatures = new[] { "local" },
+                    OptionalFeatures = new[] { "local-floor", "layers" },
+                });
+            }
 
-            // Capture enabled features for the UI so we can see what the runtime actually granted.
             try { _enabledFeatures = _session.EnabledFeatures; }
             catch { _enabledFeatures = null; }
 
-            _binding = new XRGPUBinding(_session, _device);
+            try
+            {
+                _binding = new XRGPUBinding(_session, _device);
+                _bindingConstructed = true;
+            }
+            catch (Exception bindEx)
+            {
+                _bindingConstructed = false;
+                _bindingConstructionError = bindEx.Message;
+                // Can't proceed with primary path. End session so user isn't stuck in VR.
+                try { await _session.End(); } catch { }
+                throw new InvalidOperationException(
+                    $"XRGPUBinding constructor failed (session-feature 'webgpu' was "
+                    + (_webGpuFeatureGranted ? "granted" : "rejected: " + _webGpuFeatureRejectionMessage)
+                    + "). Binding appears to be a forward-compat stub on this browser. "
+                    + "Quest 3S native shipping path requires the hybrid fallback (Phase VR.1a). "
+                    + "Underlying error: " + bindEx.Message);
+            }
             _colorFormat = _binding.GetPreferredColorFormat();
             _layer = _binding.CreateProjectionLayer(new XRGPUProjectionLayerInit
             {
