@@ -2,28 +2,26 @@
 @using SpawnDev.BlazorJS
 @using SpawnDev.BlazorJS.JSObjects
 @using SpawnDev.VoxelEngine.Rendering
-@implements IDisposable
+@implements IAsyncDisposable
 
-<PageTitle>VR Prototype (XR session)</PageTitle>
+<PageTitle>VR Prototype XR - Hybrid (WebGPU + XRWebGLLayer)</PageTitle>
 
-<h3>VR Prototype - WebXR+WebGPU barebones (Phase VR.1b)</h3>
+<h3>VR Prototype - Hybrid WebXR + WebGL2 + WebGPU compute (Phase VR.1c)</h3>
 
 <p>
-    Minimal WebXR session rendered via <code>XRGPUBinding</code>. Per frame, each eye gets a clear-color pass
-    in an animated hue cycle. No triangles, no compute, no vertex shaders - just the bare primary render path.
-    If the hue-cycling color shows up in both eyes of the headset, <code>XRGPUBinding</code> is functional
-    end-to-end on this browser and the architecture decision is fully locked.
+    The actual Lost Spawns v1 Quest shipping architecture:
+    <strong>WebGPU</strong> renders an animated spiral pattern to an <code>OffscreenCanvas</code>,
+    <strong>WebGL2</strong> uploads the canvas directly via <code>texImage2D(canvas)</code> (proven bridge
+    from VR.1a), and the WebGL2 context is attached to the XR session as the
+    <strong>XRWebGLLayer</strong> base layer (the proven 90fps path on Quest).
+    Per frame, each eye gets the texture rendered as a fullscreen quad into the XR framebuffer's
+    per-eye viewport. Not stereoscopic yet - both eyes see the same 2D pattern - but the plumbing
+    is what Lost Spawns' actual 3D scene will slot into.
 </p>
 
 @if (_report != null)
 {
-    <p>
-        Render path probe: <code style="color:@PathColor(_report.Path)">@_report.Path</code>
-        @if (_report.Path != RenderPath.FullWebGpu)
-        {
-            <span style="color:#facc15;"> - this prototype targets <code>FullWebGpu</code>; the hybrid-fallback variant is Phase VR.1a (deferred).</span>
-        }
-    </p>
+    <p>Capability: <code style="color:@PathColor(_report.Path)">@_report.Path</code></p>
 }
 
 <div style="margin:12px 0;">
@@ -31,107 +29,137 @@
     {
         <button @onclick="ExitVrAsync">Exit VR</button>
     }
-    else if (_report?.Path == RenderPath.FullWebGpu)
-    {
-        <button @onclick="EnterVrAsync" disabled="@_starting">
-            @(_starting ? "Starting VR session..." : "Enter VR")
-        </button>
-    }
     else
     {
-        <button disabled>Enter VR (requires FullWebGpu)</button>
+        <button @onclick="EnterVrAsync" disabled="@(_starting || _report == null || !_report.HasImmersiveVr)">
+            @(_starting ? "Starting VR session..." : (_report?.HasImmersiveVr == true ? "Enter VR" : "VR not available"))
+        </button>
     }
-</div>
-
-<div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;">
-    <div>Session active         : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
-    <div>'webgpu' feature req   : <span style="color:@(_webGpuFeatureGranted ? "#4ade80" : "#facc15")">@(_webGpuFeatureGranted ? "granted" : "rejected (fallback to plain session)")</span></div>
-    @if (!_webGpuFeatureGranted && !string.IsNullOrEmpty(_webGpuFeatureRejectionMessage))
-    {
-        <div style="color:#888;padding-left:24px;">(@_webGpuFeatureRejectionMessage)</div>
-    }
-    <div>XRGPUBinding ctor      : <span style="color:@(_bindingConstructed ? "#4ade80" : "#ef4444")">@(_bindingConstructed ? "succeeded" : "failed")</span></div>
-    @if (!_bindingConstructed && !string.IsNullOrEmpty(_bindingConstructionError))
-    {
-        <div style="color:#888;padding-left:24px;">(@_bindingConstructionError)</div>
-    }
-    <div>Enabled features       : @(_enabledFeatures == null ? "(none yet)" : string.Join(", ", _enabledFeatures))</div>
-    <div>First frame at (ms)    : @(_firstFrameTime?.ToString("0") ?? "(no frame received)")</div>
-    <div>Frames rendered        : @_frameCount</div>
-    <div>Poses skipped          : @_posesSkipped  <span style="color:#888">(frame fired but getViewerPose returned null)</span></div>
-    <div>Views per frame        : @_viewsPerFrame</div>
-    <div>Preferred color fmt    : @(_colorFormat ?? "(not yet resolved)")</div>
-    <div>Last clear color       : @_lastColorDisplay</div>
-    <div>Reference space type   : @(_refSpace == null ? "(none)" : _refSpaceTypeLabel)</div>
 </div>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
 {
-    <hr />
-    <h4 style="color:#ef4444;">Error</h4>
     <pre style="color:#ef4444;white-space:pre-wrap;">@_errorMessage</pre>
 }
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;">
+    <div>
+        <div style="color:#888;font-size:0.85em;">WebGL2 context (XR-compatible; drives the XRWebGLLayer framebuffer in VR)</div>
+        <canvas id="vr-proto-xr-canvas" width="1024" height="512"
+                style="width:512px;height:256px;background:#111;border:1px solid #444;"></canvas>
+    </div>
+
+    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:340px;">
+        <div style="color:#4ade80;font-weight:bold;">XR session state</div>
+        <div>Session active : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
+        <div>Enabled features: @(_enabledFeatures == null ? "(none)" : string.Join(", ", _enabledFeatures))</div>
+        <div>Frames rendered: @_frameCount</div>
+        <div>Views per frame: @_viewsPerFrame</div>
+        <div>Framebuffer dim: @_framebufferDim</div>
+        <div>Reference space: @(_refSpaceTypeLabel ?? "(none)")</div>
+    </div>
+</div>
 
 @inject BlazorJSRuntime JS
 
 @code {
     RenderPathReport? _report;
 
-    // Kept alive across frames for the duration of the XR session.
+    // WebGPU
     GPUAdapter? _adapter;
     GPUDevice? _device;
-    XRSession? _session;
-    XRGPUBinding? _binding;
-    XRProjectionLayer? _layer;
-    XRReferenceSpace? _refSpace;
-    string? _refSpaceTypeLabel;
-    string? _colorFormat;
     GPUShaderModule? _shader;
     GPURenderPipeline? _pipeline;
+    GPUBindGroup? _bindGroup;
+    GPUBuffer? _paramsBuffer;
+    OffscreenCanvas? _offscreen;
+    GPUCanvasContext? _offscreenCtx;
 
-    const string TriangleShaderWgsl = @"
-struct VOut {
-  @builtin(position) pos : vec4<f32>,
-  @location(0) col : vec3<f32>,
-}
+    // WebGL2 + XR
+    HTMLCanvasElement? _canvas;
+    WebGL2RenderingContext? _gl;
+    WebGLProgram? _glProgram;
+    WebGLTexture? _glTexture;
 
-@vertex
-fn vs(@builtin(vertex_index) i : u32) -> VOut {
-  var positions = array<vec2<f32>, 3>(
-    vec2<f32>( 0.0,  0.5),
-    vec2<f32>(-0.5, -0.5),
-    vec2<f32>( 0.5, -0.5),
-  );
-  var colors = array<vec3<f32>, 3>(
-    vec3<f32>(1.0, 0.0, 0.0),
-    vec3<f32>(0.0, 1.0, 0.0),
-    vec3<f32>(0.0, 0.0, 1.0),
-  );
-  var o : VOut;
-  o.pos = vec4<f32>(positions[i], 0.0, 1.0);
-  o.col = colors[i];
-  return o;
-}
-
-@fragment
-fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
-  return vec4<f32>(col, 1.0);
-}
-";
+    XRSession? _session;
+    XRWebGLLayer? _xrLayer;
+    XRReferenceSpace? _refSpace;
+    string? _refSpaceTypeLabel;
+    string[]? _enabledFeatures;
 
     bool _sessionActive;
     bool _starting;
     int _frameCount;
     int _viewsPerFrame;
-    int _posesSkipped;
-    double? _firstFrameTime;
-    string _lastColorDisplay = "";
+    string _framebufferDim = "--";
     string? _errorMessage;
-    string[]? _enabledFeatures;
-    bool _webGpuFeatureGranted;
-    string? _webGpuFeatureRejectionMessage;
-    bool _bindingConstructed;
-    string? _bindingConstructionError;
+
+    const int OffscreenSize = 512;
+    const string CanvasFormat = "bgra8unorm";
+
+    const string ShaderWgsl = @"
+struct Params {
+  time : f32,
+  _pad0 : f32,
+  _pad1 : f32,
+  _pad2 : f32,
+}
+@group(0) @binding(0) var<uniform> params : Params;
+
+struct VOut {
+  @builtin(position) pos : vec4<f32>,
+  @location(0) uv : vec2<f32>,
+}
+
+@vertex
+fn vs(@builtin(vertex_index) i : u32) -> VOut {
+  var p = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>( 3.0, -1.0),
+    vec2<f32>(-1.0,  3.0),
+  );
+  var uv = array<vec2<f32>, 3>(
+    vec2<f32>(0.0, 1.0),
+    vec2<f32>(2.0, 1.0),
+    vec2<f32>(0.0, -1.0),
+  );
+  var o : VOut;
+  o.pos = vec4<f32>(p[i], 0.0, 1.0);
+  o.uv = uv[i];
+  return o;
+}
+
+@fragment
+fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
+  let t = params.time;
+  let d = uv - vec2<f32>(0.5, 0.5);
+  let dist = length(d);
+  let angle = atan2(d.y, d.x);
+  let r = sin(dist * 20.0 - t * 2.0) * 0.5 + 0.5;
+  let g = sin(angle * 4.0 + t) * 0.5 + 0.5;
+  let b = cos(dist * 15.0 + t * 1.5) * 0.5 + 0.5;
+  return vec4<f32>(r, g, b, 1.0);
+}
+";
+
+    const string GlVertSrc = @"#version 300 es
+out vec2 v_uv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  v_uv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+";
+
+    const string GlFragSrc = @"#version 300 es
+precision mediump float;
+in vec2 v_uv;
+uniform sampler2D u_tex;
+out vec4 out_color;
+void main() {
+  out_color = texture(u_tex, vec2(v_uv.x, 1.0 - v_uv.y));
+}
+";
 
     protected override async Task OnInitializedAsync()
     {
@@ -151,80 +179,25 @@ fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
             using var gpu = nav.Gpu ?? throw new InvalidOperationException("navigator.gpu unavailable");
             using var xr = nav.XR ?? throw new InvalidOperationException("navigator.xr unavailable");
 
-            _adapter = await gpu.RequestAdapter()
-                ?? throw new InvalidOperationException("requestAdapter returned null");
+            // WebGPU device + offscreen canvas for scene rendering.
+            _adapter = await gpu.RequestAdapter() ?? throw new InvalidOperationException("no adapter");
             _device = await _adapter.RequestDevice();
 
-            // Canonical immersive-web/webxr-samples/webgpu/vr-barebones.html uses
-            //   requiredFeatures: ['webgpu']
-            // per the spec proposal. Empirically (2026-04-22):
-            //   - Meta Quest Browser v146.0 native:  'webgpu' feature NOT fulfillable
-            //   - Meta Immersive Web Emulator:       'webgpu' feature NOT fulfillable
-            // Both expose XRGPUBinding class + prototype methods (passes our probe's
-            // method-existence check) but neither has implemented the session-level
-            // 'webgpu' feature integration. API surface is a forward-compat stub.
-            //
-            // Try 'webgpu' first (for future-compat); fall back to plain session if
-            // rejected so we can at least characterize where the binding actually
-            // breaks vs where the feature-gate rejects us.
-            try
+            _offscreen = new OffscreenCanvas(OffscreenSize, OffscreenSize);
+            _offscreenCtx = _offscreen.GetWebGPUContext() ?? throw new InvalidOperationException("offscreen webgpu context null");
+            _offscreenCtx.Configure(new GPUCanvasConfiguration
             {
-                _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, new XRSessionInit
-                {
-                    RequiredFeatures = new[] { "local", "webgpu" },
-                    OptionalFeatures = new[] { "local-floor", "layers" },
-                });
-                _webGpuFeatureGranted = true;
-            }
-            catch (Exception featureEx)
-            {
-                _webGpuFeatureGranted = false;
-                _webGpuFeatureRejectionMessage = featureEx.Message;
-                _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, new XRSessionInit
-                {
-                    RequiredFeatures = new[] { "local" },
-                    OptionalFeatures = new[] { "local-floor", "layers" },
-                });
-            }
-
-            try { _enabledFeatures = _session.EnabledFeatures; }
-            catch { _enabledFeatures = null; }
-
-            try
-            {
-                _binding = new XRGPUBinding(_session, _device);
-                _bindingConstructed = true;
-            }
-            catch (Exception bindEx)
-            {
-                _bindingConstructed = false;
-                _bindingConstructionError = bindEx.Message;
-                // Can't proceed with primary path. End session so user isn't stuck in VR.
-                try { await _session.End(); } catch { }
-                throw new InvalidOperationException(
-                    $"XRGPUBinding constructor failed (session-feature 'webgpu' was "
-                    + (_webGpuFeatureGranted ? "granted" : "rejected: " + _webGpuFeatureRejectionMessage)
-                    + "). Binding appears to be a forward-compat stub on this browser. "
-                    + "Quest 3S native shipping path requires the hybrid fallback (Phase VR.1a). "
-                    + "Underlying error: " + bindEx.Message);
-            }
-            _colorFormat = _binding.GetPreferredColorFormat();
-            _layer = _binding.CreateProjectionLayer(new XRGPUProjectionLayerInit
-            {
-                ColorFormat = _colorFormat,
+                Device = _device,
+                Format = CanvasFormat,
+                AlphaMode = "premultiplied",
             });
 
-            _session.UpdateRenderState(new XRRenderStateInit
+            _paramsBuffer = _device.CreateBuffer(new GPUBufferDescriptor
             {
-                Layers = new XRLayer[] { _layer },
+                Size = 16,
+                Usage = GPUBufferUsage.Uniform | GPUBufferUsage.CopyDst,
             });
-
-            // Build a minimal render pipeline: clip-space triangle with per-vertex colors.
-            // WGSL shader above. No vertex buffers (positions hardcoded in the vertex shader).
-            _shader = _device.CreateShaderModule(new GPUShaderModuleDescriptor
-            {
-                Code = TriangleShaderWgsl,
-            });
+            _shader = _device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = ShaderWgsl });
             _pipeline = _device.CreateRenderPipeline(new GPURenderPipelineDescriptor
             {
                 Layout = "auto",
@@ -233,15 +206,45 @@ fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
                 {
                     Module = _shader,
                     EntryPoint = "fs",
-                    Targets = new[]
-                    {
-                        new GPUColorTargetState { Format = _colorFormat! }
-                    },
+                    Targets = new[] { new GPUColorTargetState { Format = CanvasFormat } },
                 },
                 Primitive = new GPUPrimitiveState { Topology = GPUPrimitiveTopology.TriangleList },
             });
+            _bindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
+            {
+                Layout = _pipeline.GetBindGroupLayout(0),
+                Entries = new GPUBindGroupEntry[]
+                {
+                    new() { Binding = 0, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },
+                },
+            });
 
-            // Try local-floor first; fall back to local if not granted.
+            // WebGL2 context with xrCompatible attribute. This is the context that XRWebGLLayer
+            // will render into; the WebXR compositor picks up its framebuffer.
+            using var doc = JS.Get<Document>("document");
+            _canvas = doc.GetElementById<HTMLCanvasElement>("vr-proto-xr-canvas")
+                ?? throw new InvalidOperationException("canvas not found");
+            _gl = _canvas.GetContext<WebGL2RenderingContext>("webgl2", new WebGLContextAttributes
+            {
+                XrCompatible = true,
+            }) ?? throw new InvalidOperationException("webgl2 context null");
+
+            SetupGlProgramAndTexture();
+
+            // Request the XR session (plain - no 'webgpu' feature needed for this path).
+            var init = new XRSessionInit
+            {
+                RequiredFeatures = new[] { "local" },
+                OptionalFeatures = new[] { "local-floor" },
+            };
+            _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, init);
+            try { _enabledFeatures = _session.EnabledFeatures; } catch { _enabledFeatures = null; }
+
+            // Create the XR layer with our WebGL2 context + attach as base layer.
+            _xrLayer = new XRWebGLLayer(_session, _gl);
+            _framebufferDim = $"{_xrLayer.FramebufferWidth} x {_xrLayer.FramebufferHeight}";
+            _session.UpdateRenderState(new XRRenderStateInit { BaseLayer = _xrLayer });
+
             try
             {
                 _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.LocalFloor);
@@ -254,7 +257,6 @@ fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
             }
 
             _session.OnEnd += OnSessionEnd;
-
             _sessionActive = true;
             _frameCount = 0;
             _session.RequestAnimationFrame(OnXrFrame);
@@ -271,97 +273,120 @@ fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
         }
     }
 
+    void SetupGlProgramAndTexture()
+    {
+        if (_gl == null) return;
+
+        using var vert = _gl.CreateShader(GL.VERTEX_SHADER);
+        _gl.ShaderSource(vert, GlVertSrc);
+        _gl.CompileShader(vert);
+        if (!_gl.GetShaderParameter<bool>(vert, GL.COMPILE_STATUS))
+            throw new InvalidOperationException("Vertex shader: " + _gl.GetShaderInfoLog(vert));
+
+        using var frag = _gl.CreateShader(GL.FRAGMENT_SHADER);
+        _gl.ShaderSource(frag, GlFragSrc);
+        _gl.CompileShader(frag);
+        if (!_gl.GetShaderParameter<bool>(frag, GL.COMPILE_STATUS))
+            throw new InvalidOperationException("Fragment shader: " + _gl.GetShaderInfoLog(frag));
+
+        _glProgram = _gl.CreateProgram();
+        _gl.AttachShader(_glProgram, vert);
+        _gl.AttachShader(_glProgram, frag);
+        _gl.LinkProgram(_glProgram);
+        if (!_gl.GetProgramParameter<bool>(_glProgram, GL.LINK_STATUS))
+            throw new InvalidOperationException("Link: " + _gl.GetProgramInfoLog(_glProgram));
+
+        _glTexture = _gl.CreateTexture();
+        _gl.BindTexture(GL.TEXTURE_2D, _glTexture);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
+
+        _gl.UseProgram(_glProgram);
+        using var texLoc = _gl.GetUniformLocation(_glProgram, "u_tex");
+        if (texLoc != null) _gl.Uniform1i(texLoc, 0);
+    }
+
     void OnXrFrame(double time, XRFrame? frame)
     {
-        if (!_sessionActive || frame == null || _session == null || _binding == null
-            || _layer == null || _refSpace == null || _device == null)
+        if (!_sessionActive || frame == null || _session == null || _refSpace == null
+            || _device == null || _gl == null || _xrLayer == null)
         {
             return;
         }
 
         try
         {
-            if (_firstFrameTime == null)
-            {
-                _firstFrameTime = time;
-                InvokeAsync(StateHasChanged);
-            }
+            // Re-register immediately so we don't lose the slot if rendering throws.
+            _session.RequestAnimationFrame(OnXrFrame);
 
             using var pose = frame.GetViewerPose(_refSpace);
-            if (pose == null)
+            if (pose == null) return;
+
+            // 1. Upload params, render spiral pattern to the OffscreenCanvas via WebGPU.
+            var bytes = new byte[16];
+            BitConverter.TryWriteBytes(bytes.AsSpan(0, 4), (float)(time / 1000.0));
+            using (var u8 = new Uint8Array(bytes))
             {
-                _posesSkipped++;
-                _session.RequestAnimationFrame(OnXrFrame);
-                return;
+                _device.Queue.WriteBuffer(_paramsBuffer!, 0, u8);
             }
-
+            using (var encoder = _device.CreateCommandEncoder())
             {
-                // Hue cycles every ~3 seconds; clear each eye to the current color.
-                float hue = (float)((time / 3000.0) % 1.0);
-                var (r, g, b) = HueToRgb(hue);
-                _lastColorDisplay = $"rgb({r:0.00}, {g:0.00}, {b:0.00})";
-
-                var clearColor = new GPUColorDict { R = r, G = g, B = b, A = 1.0 };
-
-                using var encoder = _device.CreateCommandEncoder();
-                int viewCount = 0;
-
-                foreach (var view in pose.Views)
+                using var curTex = _offscreenCtx!.GetCurrentTexture();
+                using var curView = curTex.CreateView();
+                using var rp = encoder.BeginRenderPass(new GPURenderPassDescriptor
                 {
-                    using (view)
+                    ColorAttachments = new[]
                     {
-                        using var subImage = _binding.GetViewSubImage(_layer, view);
-                        using var colorTexture = subImage.ColorTexture;
-                        using var colorView = colorTexture.CreateView();
-                        using var viewport = subImage.Viewport;
-
-                        using var renderPass = encoder.BeginRenderPass(new GPURenderPassDescriptor
+                        new GPURenderPassColorAttachment
                         {
-                            ColorAttachments = new[]
-                            {
-                                new GPURenderPassColorAttachment
-                                {
-                                    View = colorView,
-                                    LoadOp = GPULoadOp.Clear,
-                                    StoreOp = GPUStoreOp.Store,
-                                    ClearValue = clearColor,
-                                }
-                            }
-                        });
-                        // Restrict this eye's draw to its viewport region of the color texture.
-                        // Critical when the projection layer uses a shared (texture-array) color
-                        // target; harmless when each eye has its own texture.
-                        renderPass.SetViewport(viewport.X, viewport.Y, viewport.Width, viewport.Height, 0f, 1f);
-
-                        // Draw the triangle. Gives the Meta runtime real pixel output to composite,
-                        // not just a clear - some runtimes stall the loader on a clear-only app.
-                        if (_pipeline != null)
-                        {
-                            renderPass.SetPipeline(_pipeline);
-                            renderPass.Draw(3);
+                            View = curView, LoadOp = GPULoadOp.Clear, StoreOp = GPUStoreOp.Store,
+                            ClearValue = new GPUColorDict { R = 0, G = 0, B = 0, A = 1 },
                         }
-
-                        renderPass.End();
-                        viewCount++;
                     }
-                }
-
-                using var cmdBuf = encoder.Finish();
-                _device.Queue.Submit(new[] { cmdBuf });
-
-                _viewsPerFrame = viewCount;
+                });
+                rp.SetPipeline(_pipeline!);
+                rp.SetBindGroup(0, _bindGroup!);
+                rp.Draw(3);
+                rp.End();
+                using var cmd = encoder.Finish();
+                _device.Queue.Submit(new[] { cmd });
             }
 
+            // 2. Bind the XR framebuffer so WebGL draws into the compositor's target.
+            using var fb = _xrLayer.Framebuffer;
+            _gl.JSRef!.CallVoid("bindFramebuffer", GL.FRAMEBUFFER, fb);
+
+            // 3. Upload the OffscreenCanvas to our texture (GPU-GPU path).
+            _gl.BindTexture(GL.TEXTURE_2D, _glTexture!);
+            _gl.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, _offscreen!);
+
+            // 4. Draw the fullscreen textured quad once per eye viewport.
+            _gl.UseProgram(_glProgram!);
+            _gl.ActiveTexture(GL.TEXTURE0);
+            _gl.BindTexture(GL.TEXTURE_2D, _glTexture!);
+
+            int viewCount = 0;
+            foreach (var view in pose.Views)
+            {
+                using (view)
+                {
+                    using var vp = _xrLayer.GetViewport(view);
+                    _gl.Viewport(vp.X, vp.Y, vp.Width, vp.Height);
+                    _gl.DrawArrays(GL.TRIANGLES, 0, 3);
+                    viewCount++;
+                }
+            }
+            _viewsPerFrame = viewCount;
             _frameCount++;
-            // Re-register for next frame. Update UI sparingly (every ~10 frames) to avoid hammering Blazor.
-            _session.RequestAnimationFrame(OnXrFrame);
-            if (_frameCount % 10 == 0) InvokeAsync(StateHasChanged);
+
+            if (_frameCount % 30 == 0) InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Frame error at frame {_frameCount}: {ex.GetType().Name}: {ex.Message}";
+            _errorMessage = $"Frame {_frameCount}: {ex.GetType().Name}: {ex.Message}";
             InvokeAsync(StateHasChanged);
-            // Don't re-register; break the loop so the user can see the error.
         }
     }
 
@@ -377,7 +402,7 @@ fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
         if (_session != null)
         {
             try { await _session.End(); }
-            catch (Exception ex) { _errorMessage = $"Exit failed: {ex.Message}"; }
+            catch (Exception ex) { _errorMessage = $"Exit: {ex.Message}"; }
         }
     }
 
@@ -387,44 +412,34 @@ fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
         {
             try { _session.OnEnd -= OnSessionEnd; } catch { }
         }
+        _xrLayer?.Dispose(); _xrLayer = null;
+        _refSpace?.Dispose(); _refSpace = null;
+        _session?.Dispose(); _session = null;
+        _sessionActive = false;
+        _refSpaceTypeLabel = null;
+
+        _glTexture?.Dispose(); _glTexture = null;
+        _glProgram?.Dispose(); _glProgram = null;
+        _gl?.Dispose(); _gl = null;
+        _canvas?.Dispose(); _canvas = null;
+
+        _bindGroup?.Dispose(); _bindGroup = null;
         _pipeline?.Dispose(); _pipeline = null;
         _shader?.Dispose(); _shader = null;
-        _refSpace?.Dispose(); _refSpace = null;
-        _layer?.Dispose(); _layer = null;
-        _binding?.Dispose(); _binding = null;
-        _session?.Dispose(); _session = null;
+        _paramsBuffer?.Dispose(); _paramsBuffer = null;
+        _offscreenCtx?.Dispose(); _offscreenCtx = null;
+        _offscreen?.Dispose(); _offscreen = null;
+
         _device?.Dispose(); _device = null;
         _adapter?.Dispose(); _adapter = null;
-        _sessionActive = false;
-        _colorFormat = null;
-        _refSpaceTypeLabel = null;
+
         await Task.CompletedTask;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _ = CleanupAsync();
-    }
-
-    // HSV-ish hue-to-rgb with full saturation + 60% value, for a visually distinct rolling cycle.
-    static (float r, float g, float b) HueToRgb(float h)
-    {
-        float v = 0.6f;
-        float hh = (h % 1f) * 6f;
-        int i = (int)hh;
-        float f = hh - i;
-        float p = 0f;
-        float q = v * (1f - f);
-        float t = v * f;
-        return i switch
-        {
-            0 => (v, t, p),
-            1 => (q, v, p),
-            2 => (p, v, t),
-            3 => (p, q, v),
-            4 => (t, p, v),
-            _ => (v, p, q),
-        };
+        _sessionActive = false;
+        await CleanupAsync();
     }
 
     static string PathColor(RenderPath p) => p switch
