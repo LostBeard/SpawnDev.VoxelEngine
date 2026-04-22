@@ -471,16 +471,16 @@ void main() {
                 modelMatrices[i] = Compose(c.Pos, c.Axis, t * c.Speed, c.Scale);
             }
 
-            // Controller cubes: one per tracked input source with a grip pose.
-            // 6cm each, coloured by handedness (left=cyan tint, right=orange tint).
-            // Rays: 2m thin beams from each targetRaySpace, brighter tint.
-            // Hits: disc markers on the floor where each ray intersects y=0.
-            var controllerModels = BuildControllerModels(frame);
-            var controllerRays = BuildControllerRays(frame);
-            var floorHits = BuildFloorHits(frame);
+            // Single pass over inputSources per frame: read pose matrices and
+            // trigger once per controller, then derive all render lists from
+            // the cached snapshots. Cuts per-frame JSInterop roughly in half.
+            var snaps = SnapshotControllers(frame);
+            var controllerModels = BuildControllerModelsFromSnaps(snaps);
+            var controllerRays = BuildControllerRaysFromSnaps(snaps);
+            var floorHits = BuildFloorHitsFromSnaps(snaps);
 
             // Edge-detect trigger presses -> drop a cube at the hit point.
-            HandleTriggerSpawns(frame);
+            HandleTriggerSpawnsFromSnaps(snaps);
 
             // Reupload per-instance attribute buffer if the spawn list changed.
             if (_instanceDirty && _spawned.Count > 0 && _instanceBuffer != null)
@@ -623,6 +623,13 @@ void main() {
 
     readonly record struct ControllerModel(float[] Matrix, Vector3 Tint);
 
+    // Per-frame cached read of each input source: grip + ray pose + trigger.
+    readonly record struct ControllerSnapshot(
+        string Handedness,
+        float[]? GripMatrix,
+        float[]? RayMatrix,
+        float Trigger);
+
     // Little cubes placed by trigger press. Persisted across frames.
     readonly record struct SpawnedCube(float[] Matrix, Vector3 Tint);
     readonly List<SpawnedCube> _spawned = new();
@@ -630,191 +637,14 @@ void main() {
     // Edge-detection state: last-frame trigger-held flag per controller handedness.
     readonly Dictionary<string, bool> _triggerHeld = new();
 
-    List<ControllerModel> BuildControllerModels(XRFrame frame)
+    List<ControllerSnapshot> SnapshotControllers(XRFrame frame)
     {
-        var list = new List<ControllerModel>();
-        if (_session == null || _refSpace == null) return list;
+        var snaps = new List<ControllerSnapshot>();
+        if (_session == null || _refSpace == null) return snaps;
 
         using var sources = _session.InputSources;
-        if (sources == null) return list;
+        if (sources == null) return snaps;
 
-        int count = sources.Length;
-        const float CtrlScale = 0.06f;      // 6cm cube
-        for (int i = 0; i < count; i++)
-        {
-            using var src = sources.GetItem(i);
-            if (src == null) continue;
-            using var grip = src.GripSpace;
-            if (grip == null) continue;
-
-            using var pose = frame.GetPose(grip, _refSpace);
-            if (pose == null) continue;
-            using var xform = pose.Transform;
-            using var matrix = xform.Matrix;
-
-            float[] m;
-            try { m = matrix.ToArray(); }
-            catch { continue; }
-            if (m.Length != 16) continue;
-
-            // Scale the 3x3 rotation columns uniformly; leave the translation column alone.
-            for (int col = 0; col < 3; col++)
-                for (int row = 0; row < 3; row++)
-                    m[col * 4 + row] *= CtrlScale;
-
-            // Handedness-coded tint: left = cyan-ish, right = orange-ish, none = white.
-            Vector3 tint;
-            switch (src.Handedness)
-            {
-                case "left":  tint = new Vector3(0.55f, 0.95f, 1.15f); break;
-                case "right": tint = new Vector3(1.25f, 0.75f, 0.45f); break;
-                default:      tint = new Vector3(1f,    1f,    1f);    break;
-            }
-
-            list.Add(new ControllerModel(m, tint));
-        }
-        return list;
-    }
-
-    List<ControllerModel> BuildControllerRays(XRFrame frame)
-    {
-        var list = new List<ControllerModel>();
-        if (_session == null || _refSpace == null) return list;
-
-        using var sources = _session.InputSources;
-        if (sources == null) return list;
-
-        // Local ray geometry: unit cube [-0.5..0.5]^3 -> thin 2m beam whose near end
-        // sits at the target-ray origin and whose far end is at z = -RayLength.
-        // Scale(xy, RayThickness; z, RayLength), then translate (0,0,-RayLength/2)
-        // so the +0.5 Z face lands at z=0 and the -0.5 Z face at z=-RayLength.
-        var local = new float[]
-        {
-            RayThickness, 0,            0,           0,
-            0,            RayThickness, 0,           0,
-            0,            0,            RayLength,   0,
-            0,            0,           -RayLength/2, 1,
-        };
-
-        int count = sources.Length;
-        for (int i = 0; i < count; i++)
-        {
-            using var src = sources.GetItem(i);
-            if (src == null) continue;
-            using var tray = src.TargetRaySpace;
-            if (tray == null) continue;
-
-            using var pose = frame.GetPose(tray, _refSpace);
-            if (pose == null) continue;
-            using var xform = pose.Transform;
-            using var matrix = xform.Matrix;
-
-            float[] poseMat;
-            try { poseMat = matrix.ToArray(); }
-            catch { continue; }
-            if (poseMat.Length != 16) continue;
-
-            var modelMat = Mul4(poseMat, local);
-
-            // Rays glow a little brighter than the grip cubes.
-            Vector3 tint;
-            switch (src.Handedness)
-            {
-                case "left":  tint = new Vector3(0.7f, 1.4f, 1.6f); break;
-                case "right": tint = new Vector3(1.7f, 1.0f, 0.5f); break;
-                default:      tint = new Vector3(1.3f, 1.3f, 1.3f); break;
-            }
-
-            list.Add(new ControllerModel(modelMat, tint));
-        }
-        return list;
-    }
-
-    List<ControllerModel> BuildFloorHits(XRFrame frame)
-    {
-        var list = new List<ControllerModel>();
-        if (_session == null || _refSpace == null) return list;
-
-        using var sources = _session.InputSources;
-        if (sources == null) return list;
-
-        const float FloorHalf = 5f; // matches the 10x10m floor quad
-        int count = sources.Length;
-        for (int i = 0; i < count; i++)
-        {
-            using var src = sources.GetItem(i);
-            if (src == null) continue;
-            using var tray = src.TargetRaySpace;
-            if (tray == null) continue;
-
-            using var pose = frame.GetPose(tray, _refSpace);
-            if (pose == null) continue;
-            using var xform = pose.Transform;
-            using var matrix = xform.Matrix;
-
-            float[] m;
-            try { m = matrix.ToArray(); }
-            catch { continue; }
-            if (m.Length != 16) continue;
-
-            // World-space ray origin is the translation column.
-            float ox = m[12], oy = m[13], oz = m[14];
-            // Forward direction: target-ray space convention is -Z local == "ray direction".
-            // In the column-major pose matrix, column 2 is the local +Z axis in world
-            // space, so negate it for "ray direction."
-            float dx = -m[8], dy = -m[9], dz = -m[10];
-            if (dy >= -1e-5f) continue;         // ray isn't heading downward
-            float t = -oy / dy;
-            if (t <= 0f || t > 100f) continue;  // bad intersection or too far
-            float hx = ox + t * dx;
-            float hz = oz + t * dz;
-            if (MathF.Abs(hx) > FloorHalf || MathF.Abs(hz) > FloorHalf) continue;
-
-            // Read trigger value (standardized WebXR mapping: button 0 = trigger).
-            float trigger = 0f;
-            using (var gp = src.Gamepad)
-            {
-                if (gp != null)
-                {
-                    var btns = gp.Buttons;
-                    if (btns != null)
-                    {
-                        if (btns.Length > 0 && btns[0] != null)
-                        {
-                            try { trigger = (float)btns[0].Value; } catch { }
-                        }
-                        for (int bi = 0; bi < btns.Length; bi++) btns[bi]?.Dispose();
-                    }
-                }
-            }
-
-            // Marker size + tint scale with trigger. Resting disc is ~20cm, pressed ~40cm.
-            float radius = 0.10f + 0.10f * trigger;
-            var markerMat = new float[]
-            {
-                radius * 2f, 0,    0,           0,
-                0,           0.01f, 0,           0,
-                0,           0,    radius * 2f, 0,
-                hx,          0.02f,hz,          1,
-            };
-
-            // Pulse bright: trigger-press makes it glow harder.
-            float g = 0.9f + 1.5f * trigger;
-            var tint = new Vector3(1.4f * g, 0.7f * g, 0.35f * g);
-
-            list.Add(new ControllerModel(markerMat, tint));
-        }
-        return list;
-    }
-
-    void HandleTriggerSpawns(XRFrame frame)
-    {
-        if (_session == null || _refSpace == null) return;
-
-        using var sources = _session.InputSources;
-        if (sources == null) return;
-
-        const float FloorHalf = 5f;
         int count = sources.Length;
         for (int i = 0; i < count; i++)
         {
@@ -824,7 +654,9 @@ void main() {
             string hand = src.Handedness;
             if (string.IsNullOrEmpty(hand)) hand = $"idx{i}";
 
-            // Read trigger value.
+            float[]? gripMat = TryReadSpacePose(frame, src.GripSpace);
+            float[]? rayMat  = TryReadSpacePose(frame, src.TargetRaySpace);
+
             float trigger = 0f;
             using (var gp = src.Gamepad)
             {
@@ -842,49 +674,129 @@ void main() {
                 }
             }
 
-            bool held = trigger > 0.6f;
-            _triggerHeld.TryGetValue(hand, out bool wasHeld);
-            _triggerHeld[hand] = held;
+            snaps.Add(new ControllerSnapshot(hand, gripMat, rayMat, trigger));
+        }
+        return snaps;
+    }
 
-            // Only spawn on the rising edge.
-            if (!held || wasHeld) continue;
-
-            // Compute the ray/floor intersection for this controller.
-            using var tray = src.TargetRaySpace;
-            if (tray == null) continue;
-            using var pose = frame.GetPose(tray, _refSpace);
-            if (pose == null) continue;
-            using var xform = pose.Transform;
-            using var matrix = xform.Matrix;
-
-            float[] m;
-            try { m = matrix.ToArray(); } catch { continue; }
-            if (m.Length != 16) continue;
-
-            float ox = m[12], oy = m[13], oz = m[14];
-            float dx = -m[8], dy = -m[9], dz = -m[10];
-            if (dy >= -1e-5f) continue;
-            float t = -oy / dy;
-            if (t <= 0f || t > 100f) continue;
-            float hx = ox + t * dx;
-            float hz = oz + t * dz;
-            if (MathF.Abs(hx) > FloorHalf || MathF.Abs(hz) > FloorHalf) continue;
-
-            // Build a model matrix that places a 12cm cube sitting on the floor
-            // at the hit point, with a tiny yaw per spawn index so consecutive
-            // drops don't all line up identically.
-            float yaw = _spawned.Count * 0.37f;
-            float cy = MathF.Cos(yaw), sy = MathF.Sin(yaw);
-            float s = SpawnCubeSize;
-            var mm = new float[]
+    float[]? TryReadSpacePose(XRFrame frame, XRSpace? space)
+    {
+        if (space == null || _refSpace == null) return null;
+        try
+        {
+            using (space)
             {
-                s * cy,  0,  s * -sy, 0,
-                0,       s,  0,       0,
-                s * sy,  0,  s * cy,  0,
-                hx,      s / 2f + 0.001f, hz, 1,
+                using var pose = frame.GetPose(space, _refSpace);
+                if (pose == null) return null;
+                using var xform = pose.Transform;
+                using var matrix = xform.Matrix;
+                var m = matrix.ToArray();
+                return m.Length == 16 ? m : null;
+            }
+        }
+        catch { return null; }
+    }
+
+    List<ControllerModel> BuildControllerModelsFromSnaps(List<ControllerSnapshot> snaps)
+    {
+        var list = new List<ControllerModel>(snaps.Count);
+        const float CtrlScale = 0.06f;
+        foreach (var s in snaps)
+        {
+            if (s.GripMatrix == null) continue;
+            var m = (float[])s.GripMatrix.Clone();
+            for (int col = 0; col < 3; col++)
+                for (int row = 0; row < 3; row++)
+                    m[col * 4 + row] *= CtrlScale;
+
+            Vector3 tint = s.Handedness switch
+            {
+                "left"  => new Vector3(0.55f, 0.95f, 1.15f),
+                "right" => new Vector3(1.25f, 0.75f, 0.45f),
+                _        => new Vector3(1f,    1f,    1f),
+            };
+            list.Add(new ControllerModel(m, tint));
+        }
+        return list;
+    }
+
+    static readonly float[] _rayLocal =
+    {
+        RayThickness, 0,            0,           0,
+        0,            RayThickness, 0,           0,
+        0,            0,            RayLength,   0,
+        0,            0,           -RayLength/2, 1,
+    };
+
+    List<ControllerModel> BuildControllerRaysFromSnaps(List<ControllerSnapshot> snaps)
+    {
+        var list = new List<ControllerModel>(snaps.Count);
+        foreach (var s in snaps)
+        {
+            if (s.RayMatrix == null) continue;
+            var modelMat = Mul4(s.RayMatrix, _rayLocal);
+
+            Vector3 tint = s.Handedness switch
+            {
+                "left"  => new Vector3(0.7f, 1.4f, 1.6f),
+                "right" => new Vector3(1.7f, 1.0f, 0.5f),
+                _        => new Vector3(1.3f, 1.3f, 1.3f),
+            };
+            list.Add(new ControllerModel(modelMat, tint));
+        }
+        return list;
+    }
+
+    List<ControllerModel> BuildFloorHitsFromSnaps(List<ControllerSnapshot> snaps)
+    {
+        var list = new List<ControllerModel>(snaps.Count);
+        const float FloorHalf = 5f;
+        foreach (var s in snaps)
+        {
+            if (s.RayMatrix == null) continue;
+            if (!RayFloorHit(s.RayMatrix, FloorHalf, out float hx, out float hz)) continue;
+
+            float radius = 0.10f + 0.10f * s.Trigger;
+            var markerMat = new float[]
+            {
+                radius * 2f, 0,     0,           0,
+                0,           0.01f, 0,           0,
+                0,           0,     radius * 2f, 0,
+                hx,          0.02f, hz,          1,
             };
 
-            Vector3 tint = hand switch
+            float g = 0.9f + 1.5f * s.Trigger;
+            var tint = new Vector3(1.4f * g, 0.7f * g, 0.35f * g);
+            list.Add(new ControllerModel(markerMat, tint));
+        }
+        return list;
+    }
+
+    void HandleTriggerSpawnsFromSnaps(List<ControllerSnapshot> snaps)
+    {
+        const float FloorHalf = 5f;
+        foreach (var s in snaps)
+        {
+            bool held = s.Trigger > 0.6f;
+            _triggerHeld.TryGetValue(s.Handedness, out bool wasHeld);
+            _triggerHeld[s.Handedness] = held;
+            if (!held || wasHeld) continue;
+
+            if (s.RayMatrix == null) continue;
+            if (!RayFloorHit(s.RayMatrix, FloorHalf, out float hx, out float hz)) continue;
+
+            float yaw = _spawned.Count * 0.37f;
+            float cy = MathF.Cos(yaw), sy = MathF.Sin(yaw);
+            float sc = SpawnCubeSize;
+            var mm = new float[]
+            {
+                sc * cy,  0,  sc * -sy, 0,
+                0,        sc, 0,        0,
+                sc * sy,  0,  sc * cy,  0,
+                hx,       sc / 2f + 0.001f, hz, 1,
+            };
+
+            Vector3 tint = s.Handedness switch
             {
                 "left"  => new Vector3(0.65f, 1.10f, 1.30f),
                 "right" => new Vector3(1.40f, 0.85f, 0.50f),
@@ -892,12 +804,22 @@ void main() {
             };
 
             _spawned.Add(new SpawnedCube(mm, tint));
-            if (_spawned.Count > MaxSpawnedCubes)
-            {
-                _spawned.RemoveAt(0);
-            }
+            if (_spawned.Count > MaxSpawnedCubes) _spawned.RemoveAt(0);
             _instanceDirty = true;
         }
+    }
+
+    static bool RayFloorHit(float[] m, float floorHalf, out float hx, out float hz)
+    {
+        hx = 0; hz = 0;
+        float ox = m[12], oy = m[13], oz = m[14];
+        float dx = -m[8], dy = -m[9], dz = -m[10];
+        if (dy >= -1e-5f) return false;
+        float t = -oy / dy;
+        if (t <= 0f || t > 100f) return false;
+        hx = ox + t * dx;
+        hz = oz + t * dz;
+        return MathF.Abs(hx) <= floorHalf && MathF.Abs(hz) <= floorHalf;
     }
 
     void UploadInstanceBuffer()
