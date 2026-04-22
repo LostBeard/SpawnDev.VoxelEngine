@@ -1,45 +1,284 @@
 @page "/vr-prototype-xr"
 @using SpawnDev.BlazorJS
+@using SpawnDev.BlazorJS.JSObjects
 @using SpawnDev.VoxelEngine.Rendering
+@implements IDisposable
 
 <PageTitle>VR Prototype (XR session)</PageTitle>
 
-<h3>VR Prototype - WebXR session (Phase VR.1b)</h3>
+<h3>VR Prototype - WebXR+WebGPU barebones (Phase VR.1b)</h3>
 
 <p>
-    Wraps the 2D measurement rig in a WebXR session. Renders the same scene to the headset through whichever
-    render path the browser supports: <code>FullWebGpu</code> (via <code>XRGPUBinding</code>) or
-    <code>HybridWebGl2</code> (via <code>XRWebGLLayer</code> with the ImageBitmap bridge).
+    Minimal WebXR session rendered via <code>XRGPUBinding</code>. Per frame, each eye gets a clear-color pass
+    in an animated hue cycle. No triangles, no compute, no vertex shaders - just the bare primary render path.
+    If the hue-cycling color shows up in both eyes of the headset, <code>XRGPUBinding</code> is functional
+    end-to-end on this browser and the architecture decision is fully locked.
 </p>
 
-<p style="color:#facc15;">
-    <strong>Status:</strong> Placeholder. XR session wiring shipping after VR.1a (2D measurement) is proven.
-    <br />
-    Current render path reported by the probe:
-    @if (_report != null)
+@if (_report != null)
+{
+    <p>
+        Render path probe: <code style="color:@PathColor(_report.Path)">@_report.Path</code>
+        @if (_report.Path != RenderPath.FullWebGpu)
+        {
+            <span style="color:#facc15;"> - this prototype targets <code>FullWebGpu</code>; the hybrid-fallback variant is Phase VR.1a (deferred).</span>
+        }
+    </p>
+}
+
+<div style="margin:12px 0;">
+    @if (_sessionActive)
     {
-        <code style="color:@PathColor(_report.Path)">@_report.Path</code>
+        <button @onclick="ExitVrAsync">Exit VR</button>
+    }
+    else if (_report?.Path == RenderPath.FullWebGpu)
+    {
+        <button @onclick="EnterVrAsync" disabled="@_starting">
+            @(_starting ? "Starting VR session..." : "Enter VR")
+        </button>
     }
     else
     {
-        <em>probing...</em>
+        <button disabled>Enter VR (requires FullWebGpu)</button>
     }
-</p>
+</div>
 
-<p style="color:#888;font-size:0.9em;">
-    This page is the Quest 3S-facing VR test. Once shipped, click "Enter VR" in the headset-side Meta Quest Browser
-    (this page served over HTTPS per the WebXR secure-context requirement) and the rotating scene renders at 90 fps.
-    Timing overlay reports frame deltas for ongoing comparison against the VR.1a desktop baseline.
-</p>
+<div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;">
+    <div>Session active       : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
+    <div>Frames rendered      : @_frameCount</div>
+    <div>Views per frame      : @_viewsPerFrame</div>
+    <div>Preferred color fmt  : @(_colorFormat ?? "(not yet resolved)")</div>
+    <div>Last clear color     : @_lastColorDisplay</div>
+    <div>Reference space type : @(_refSpace == null ? "(none)" : _refSpaceTypeLabel)</div>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <hr />
+    <h4 style="color:#ef4444;">Error</h4>
+    <pre style="color:#ef4444;white-space:pre-wrap;">@_errorMessage</pre>
+}
 
 @inject BlazorJSRuntime JS
 
 @code {
     RenderPathReport? _report;
 
+    // Kept alive across frames for the duration of the XR session.
+    GPUAdapter? _adapter;
+    GPUDevice? _device;
+    XRSession? _session;
+    XRGPUBinding? _binding;
+    XRProjectionLayer? _layer;
+    XRReferenceSpace? _refSpace;
+    string? _refSpaceTypeLabel;
+    string? _colorFormat;
+
+    bool _sessionActive;
+    bool _starting;
+    int _frameCount;
+    int _viewsPerFrame;
+    string _lastColorDisplay = "";
+    string? _errorMessage;
+
     protected override async Task OnInitializedAsync()
     {
         _report = await RenderPathDetector.DetectAsync(JS);
+    }
+
+    async Task EnterVrAsync()
+    {
+        if (_sessionActive || _starting) return;
+        _starting = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            using var nav = new Navigator();
+            using var gpu = nav.Gpu ?? throw new InvalidOperationException("navigator.gpu unavailable");
+            using var xr = nav.XR ?? throw new InvalidOperationException("navigator.xr unavailable");
+
+            _adapter = await gpu.RequestAdapter()
+                ?? throw new InvalidOperationException("requestAdapter returned null");
+            _device = await _adapter.RequestDevice();
+
+            // Prefer local-floor (stage); fall back to local if the runtime doesn't offer floor estimation.
+            var init = new XRSessionInit
+            {
+                RequiredFeatures = new[] { "local" },
+                OptionalFeatures = new[] { "local-floor" }
+            };
+            _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, init);
+
+            _binding = new XRGPUBinding(_session, _device);
+            _colorFormat = _binding.GetPreferredColorFormat();
+            _layer = _binding.CreateProjectionLayer(new XRGPUProjectionLayerInit
+            {
+                ColorFormat = _colorFormat,
+            });
+
+            _session.UpdateRenderState(new XRRenderStateInit
+            {
+                Layers = new XRLayer[] { _layer },
+            });
+
+            // Try local-floor first; fall back to local if not granted.
+            try
+            {
+                _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.LocalFloor);
+                _refSpaceTypeLabel = "local-floor";
+            }
+            catch
+            {
+                _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.Local);
+                _refSpaceTypeLabel = "local";
+            }
+
+            _session.OnEnd += OnSessionEnd;
+
+            _sessionActive = true;
+            _frameCount = 0;
+            _session.RequestAnimationFrame(OnXrFrame);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Enter VR failed: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
+            await CleanupAsync();
+        }
+        finally
+        {
+            _starting = false;
+            StateHasChanged();
+        }
+    }
+
+    void OnXrFrame(double time, XRFrame? frame)
+    {
+        if (!_sessionActive || frame == null || _session == null || _binding == null
+            || _layer == null || _refSpace == null || _device == null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var pose = frame.GetViewerPose(_refSpace);
+            if (pose != null)
+            {
+                // Hue cycles every ~3 seconds; clear each eye to the current color.
+                float hue = (float)((time / 3000.0) % 1.0);
+                var (r, g, b) = HueToRgb(hue);
+                _lastColorDisplay = $"rgb({r:0.00}, {g:0.00}, {b:0.00})";
+
+                var clearColor = new GPUColorDict { R = r, G = g, B = b, A = 1.0 };
+
+                using var encoder = _device.CreateCommandEncoder();
+                int viewCount = 0;
+
+                foreach (var view in pose.Views)
+                {
+                    using (view)
+                    {
+                        using var subImage = _binding.GetViewSubImage(_layer, view);
+                        using var colorTexture = subImage.ColorTexture;
+                        using var colorView = colorTexture.CreateView();
+
+                        using var renderPass = encoder.BeginRenderPass(new GPURenderPassDescriptor
+                        {
+                            ColorAttachments = new[]
+                            {
+                                new GPURenderPassColorAttachment
+                                {
+                                    View = colorView,
+                                    LoadOp = GPULoadOp.Clear,
+                                    StoreOp = GPUStoreOp.Store,
+                                    ClearValue = clearColor,
+                                }
+                            }
+                        });
+                        renderPass.End();
+                        viewCount++;
+                    }
+                }
+
+                using var cmdBuf = encoder.Finish();
+                _device.Queue.Submit(new[] { cmdBuf });
+
+                _viewsPerFrame = viewCount;
+            }
+
+            _frameCount++;
+            // Re-register for next frame. Update UI sparingly (every ~10 frames) to avoid hammering Blazor.
+            _session.RequestAnimationFrame(OnXrFrame);
+            if (_frameCount % 10 == 0) InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Frame error at frame {_frameCount}: {ex.GetType().Name}: {ex.Message}";
+            InvokeAsync(StateHasChanged);
+            // Don't re-register; break the loop so the user can see the error.
+        }
+    }
+
+    void OnSessionEnd(XRSessionEvent e)
+    {
+        _sessionActive = false;
+        _ = CleanupAsync();
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitVrAsync()
+    {
+        if (_session != null)
+        {
+            try { await _session.End(); }
+            catch (Exception ex) { _errorMessage = $"Exit failed: {ex.Message}"; }
+        }
+    }
+
+    async Task CleanupAsync()
+    {
+        if (_session != null)
+        {
+            try { _session.OnEnd -= OnSessionEnd; } catch { }
+        }
+        _refSpace?.Dispose(); _refSpace = null;
+        _layer?.Dispose(); _layer = null;
+        _binding?.Dispose(); _binding = null;
+        _session?.Dispose(); _session = null;
+        _device?.Dispose(); _device = null;
+        _adapter?.Dispose(); _adapter = null;
+        _sessionActive = false;
+        _colorFormat = null;
+        _refSpaceTypeLabel = null;
+        await Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        _ = CleanupAsync();
+    }
+
+    // HSV-ish hue-to-rgb with full saturation + 60% value, for a visually distinct rolling cycle.
+    static (float r, float g, float b) HueToRgb(float h)
+    {
+        float v = 0.6f;
+        float hh = (h % 1f) * 6f;
+        int i = (int)hh;
+        float f = hh - i;
+        float p = 0f;
+        float q = v * (1f - f);
+        float t = v * f;
+        return i switch
+        {
+            0 => (v, t, p),
+            1 => (q, v, p),
+            2 => (p, v, t),
+            3 => (p, q, v),
+            4 => (t, p, v),
+            _ => (v, p, q),
+        };
     }
 
     static string PathColor(RenderPath p) => p switch
