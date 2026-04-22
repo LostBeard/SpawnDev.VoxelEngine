@@ -45,7 +45,10 @@
 
 <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;">
     <div>Session active       : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
+    <div>Enabled features     : @(_enabledFeatures == null ? "(none yet)" : string.Join(", ", _enabledFeatures))</div>
+    <div>First frame at (ms)  : @(_firstFrameTime?.ToString("0") ?? "(no frame received)")</div>
     <div>Frames rendered      : @_frameCount</div>
+    <div>Poses skipped        : @_posesSkipped  <span style="color:#888">(frame fired but getViewerPose returned null)</span></div>
     <div>Views per frame      : @_viewsPerFrame</div>
     <div>Preferred color fmt  : @(_colorFormat ?? "(not yet resolved)")</div>
     <div>Last clear color     : @_lastColorDisplay</div>
@@ -73,13 +76,48 @@
     XRReferenceSpace? _refSpace;
     string? _refSpaceTypeLabel;
     string? _colorFormat;
+    GPUShaderModule? _shader;
+    GPURenderPipeline? _pipeline;
+
+    const string TriangleShaderWgsl = @"
+struct VOut {
+  @builtin(position) pos : vec4<f32>,
+  @location(0) col : vec3<f32>,
+}
+
+@vertex
+fn vs(@builtin(vertex_index) i : u32) -> VOut {
+  var positions = array<vec2<f32>, 3>(
+    vec2<f32>( 0.0,  0.5),
+    vec2<f32>(-0.5, -0.5),
+    vec2<f32>( 0.5, -0.5),
+  );
+  var colors = array<vec3<f32>, 3>(
+    vec3<f32>(1.0, 0.0, 0.0),
+    vec3<f32>(0.0, 1.0, 0.0),
+    vec3<f32>(0.0, 0.0, 1.0),
+  );
+  var o : VOut;
+  o.pos = vec4<f32>(positions[i], 0.0, 1.0);
+  o.col = colors[i];
+  return o;
+}
+
+@fragment
+fn fs(@location(0) col : vec3<f32>) -> @location(0) vec4<f32> {
+  return vec4<f32>(col, 1.0);
+}
+";
 
     bool _sessionActive;
     bool _starting;
     int _frameCount;
     int _viewsPerFrame;
+    int _posesSkipped;
+    double? _firstFrameTime;
     string _lastColorDisplay = "";
     string? _errorMessage;
+    string[]? _enabledFeatures;
 
     protected override async Task OnInitializedAsync()
     {
@@ -103,13 +141,20 @@
                 ?? throw new InvalidOperationException("requestAdapter returned null");
             _device = await _adapter.RequestDevice();
 
-            // Prefer local-floor (stage); fall back to local if the runtime doesn't offer floor estimation.
+            // `webgpu` is the critical feature: without it requested, the session creates fine
+            // but XRGPUBinding produces non-presenting textures (loader screen hangs forever).
+            // `layers` is needed for the WebXR Layers module (which XRProjectionLayer is part of).
+            // `local` is the basic reference-space we need; `local-floor` is nicer if available.
             var init = new XRSessionInit
             {
-                RequiredFeatures = new[] { "local" },
-                OptionalFeatures = new[] { "local-floor" }
+                RequiredFeatures = new[] { "local", "webgpu" },
+                OptionalFeatures = new[] { "local-floor", "layers" },
             };
             _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, init);
+
+            // Capture enabled features for the UI so we can see what the runtime actually granted.
+            try { _enabledFeatures = _session.EnabledFeatures; }
+            catch { _enabledFeatures = null; }
 
             _binding = new XRGPUBinding(_session, _device);
             _colorFormat = _binding.GetPreferredColorFormat();
@@ -121,6 +166,28 @@
             _session.UpdateRenderState(new XRRenderStateInit
             {
                 Layers = new XRLayer[] { _layer },
+            });
+
+            // Build a minimal render pipeline: clip-space triangle with per-vertex colors.
+            // WGSL shader above. No vertex buffers (positions hardcoded in the vertex shader).
+            _shader = _device.CreateShaderModule(new GPUShaderModuleDescriptor
+            {
+                Code = TriangleShaderWgsl,
+            });
+            _pipeline = _device.CreateRenderPipeline(new GPURenderPipelineDescriptor
+            {
+                Layout = "auto",
+                Vertex = new GPUVertexState { Module = _shader, EntryPoint = "vs" },
+                Fragment = new GPUFragmentState
+                {
+                    Module = _shader,
+                    EntryPoint = "fs",
+                    Targets = new[]
+                    {
+                        new GPUColorTargetState { Format = _colorFormat! }
+                    },
+                },
+                Primitive = new GPUPrimitiveState { Topology = GPUPrimitiveTopology.TriangleList },
             });
 
             // Try local-floor first; fall back to local if not granted.
@@ -163,8 +230,20 @@
 
         try
         {
+            if (_firstFrameTime == null)
+            {
+                _firstFrameTime = time;
+                InvokeAsync(StateHasChanged);
+            }
+
             using var pose = frame.GetViewerPose(_refSpace);
-            if (pose != null)
+            if (pose == null)
+            {
+                _posesSkipped++;
+                _session.RequestAnimationFrame(OnXrFrame);
+                return;
+            }
+
             {
                 // Hue cycles every ~3 seconds; clear each eye to the current color.
                 float hue = (float)((time / 3000.0) % 1.0);
@@ -183,6 +262,7 @@
                         using var subImage = _binding.GetViewSubImage(_layer, view);
                         using var colorTexture = subImage.ColorTexture;
                         using var colorView = colorTexture.CreateView();
+                        using var viewport = subImage.Viewport;
 
                         using var renderPass = encoder.BeginRenderPass(new GPURenderPassDescriptor
                         {
@@ -197,6 +277,19 @@
                                 }
                             }
                         });
+                        // Restrict this eye's draw to its viewport region of the color texture.
+                        // Critical when the projection layer uses a shared (texture-array) color
+                        // target; harmless when each eye has its own texture.
+                        renderPass.SetViewport(viewport.X, viewport.Y, viewport.Width, viewport.Height, 0f, 1f);
+
+                        // Draw the triangle. Gives the Meta runtime real pixel output to composite,
+                        // not just a clear - some runtimes stall the loader on a clear-only app.
+                        if (_pipeline != null)
+                        {
+                            renderPass.SetPipeline(_pipeline);
+                            renderPass.Draw(3);
+                        }
+
                         renderPass.End();
                         viewCount++;
                     }
@@ -243,6 +336,8 @@
         {
             try { _session.OnEnd -= OnSessionEnd; } catch { }
         }
+        _pipeline?.Dispose(); _pipeline = null;
+        _shader?.Dispose(); _shader = null;
         _refSpace?.Dispose(); _refSpace = null;
         _layer?.Dispose(); _layer = null;
         _binding?.Dispose(); _binding = null;
