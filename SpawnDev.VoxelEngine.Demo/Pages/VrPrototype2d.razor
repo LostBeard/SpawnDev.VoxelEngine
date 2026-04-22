@@ -1,51 +1,503 @@
 @page "/vr-prototype-2d"
 @using SpawnDev.BlazorJS
+@using SpawnDev.BlazorJS.JSObjects
 @using SpawnDev.VoxelEngine.Rendering
+@implements IAsyncDisposable
 
-<PageTitle>VR Prototype (2D measurement)</PageTitle>
+<PageTitle>VR Prototype 2D - Hybrid pipeline measurement</PageTitle>
 
-<h3>VR Prototype - 2D measurement rig (Phase VR.1a)</h3>
+<h3>VR Prototype - Hybrid pipeline measurement (Phase VR.1a)</h3>
 
 <p>
-    This page measures whether the hybrid fallback render path can hit a 90 fps VR budget on Quest 3S native browser.
-    Runs the same scene through two render paths side-by-side, logs per-frame timing, and reports the answer.
+    Measures the hybrid fallback render path end-to-end: WebGPU compute generates an animated spiral pattern,
+    WebGPU renders it to an <code>OffscreenCanvas</code>, <code>transferToImageBitmap()</code> hands it over,
+    WebGL2 uploads via <code>texImage2D</code> and draws to the visible canvas via a full-screen triangle.
+    Per-stage timings show whether the bridge fits the 11 ms 90fps budget.
 </p>
 
-<ul>
-    <li><strong>Path A (direct):</strong> WebGPU compute shader writes animated gradient to a GPUTexture; WebGPU renders that texture to a canvas via <code>GPUCanvasContext</code>.</li>
-    <li><strong>Path B (hybrid):</strong> Same compute output, rendered to an <code>OffscreenCanvas</code> via WebGPU, then <code>transferToImageBitmap()</code> + <code>WebGL2.texImage2D(imageBitmap)</code> + WebGL2 draws a full-screen quad to a canvas.</li>
-</ul>
+@if (_report != null)
+{
+    <p>Capability: <code style="color:@PathColor(_report.Path)">@_report.Path</code></p>
+}
 
-<p style="color:#facc15;">
-    <strong>Status:</strong> Placeholder. Measurement pipeline shipping in the next commit.
-    <br />
-    Current render path reported by the probe:
-    @if (_report != null)
+<div style="margin:12px 0;">
+    @if (_running)
     {
-        <code style="color:@PathColor(_report.Path)">@_report.Path</code>
+        <button @onclick="StopAsync">Stop</button>
     }
     else
     {
-        <em>probing...</em>
+        <button @onclick="StartAsync" disabled="@_starting">
+            @(_starting ? "Starting..." : "Start measurement")
+        </button>
     }
-</p>
+</div>
 
-<p style="color:#888;font-size:0.9em;">
-    If you land here before the measurement code ships, visit <a href="render-path">/render-path</a>
-    to see the full capability report. The measurement will branch behavior based on the detected path:
-    FullWebGpu skips the WebGL2 bridge entirely (native primary path); HybridWebGl2 measures the bridge overhead
-    head-to-head against the direct path; WebGpuOnly runs desktop 2D for dev iteration.
-</p>
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <pre style="color:#ef4444;white-space:pre-wrap;">@_errorMessage</pre>
+}
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;">
+    <div>
+        <div style="color:#888;font-size:0.85em;">WebGL2 bridge output (imageBitmap → texImage2D → fullscreen quad)</div>
+        <canvas id="vr-proto-2d-canvas" width="512" height="512"
+                style="width:512px;height:512px;background:#111;border:1px solid #444;"></canvas>
+    </div>
+
+    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:360px;">
+        <div style="color:#4ade80;font-weight:bold;">Per-frame timing (ms, rolling @RollingWindow frames)</div>
+        <div style="margin-top:6px;">
+            <div>compute        : @Fmt(_tCompute)</div>
+            <div>render         : @Fmt(_tRender)</div>
+            <div>transferBitmap : @Fmt(_tTransferBitmap)</div>
+            <div>texImage2D     : @Fmt(_tTexUpload)</div>
+            <div>webgl draw     : @Fmt(_tWebGLDraw)</div>
+            <div style="color:#facc15;">total          : @Fmt(_tTotal)</div>
+        </div>
+        <hr style="border-color:#444;margin:8px 0;" />
+        <div>frames rendered: @_frameCount</div>
+        <div>last fps est   : @(_lastFps > 0 ? _lastFps.ToString("0.0") : "--")</div>
+        <div>90fps budget   : 11.11 ms/frame <span style="color:@(_tTotal.Avg <= 11.11 && _tTotal.Count > 0 ? "#4ade80" : "#ef4444")">(@((_tTotal.Count == 0) ? "--" : (_tTotal.Avg <= 11.11 ? "meets" : "MISSES")))</span></div>
+    </div>
+</div>
 
 @inject BlazorJSRuntime JS
 
 @code {
     RenderPathReport? _report;
 
+    // WebGPU side
+    GPUAdapter? _adapter;
+    GPUDevice? _device;
+    GPUTexture? _storageTexture;
+    GPUTextureView? _storageTextureView;
+    GPUShaderModule? _computeShader;
+    GPUShaderModule? _blitShader;
+    GPUComputePipeline? _computePipeline;
+    GPURenderPipeline? _blitPipeline;
+    GPUBindGroup? _computeBindGroup;
+    GPUBindGroup? _blitBindGroup;
+    GPUBuffer? _paramsBuffer;
+    GPUSampler? _sampler;
+
+    OffscreenCanvas? _offscreen;
+    GPUCanvasContext? _offscreenCtx;
+
+    // WebGL2 side
+    HTMLCanvasElement? _canvas;
+    WebGL2RenderingContext? _gl;
+    WebGLProgram? _glProgram;
+    WebGLTexture? _glTexture;
+
+    // Loop state
+    bool _running;
+    bool _starting;
+    int _frameCount;
+    double _lastFrameTime;
+    double _lastFps;
+    string? _errorMessage;
+    ActionCallback<double>? _rafCallback;
+
+    const int Width = 512;
+    const int Height = 512;
+    const int RollingWindow = 60;
+    const string CanvasFormat = "bgra8unorm";
+
+    readonly RollingMs _tCompute = new();
+    readonly RollingMs _tRender = new();
+    readonly RollingMs _tTransferBitmap = new();
+    readonly RollingMs _tTexUpload = new();
+    readonly RollingMs _tWebGLDraw = new();
+    readonly RollingMs _tTotal = new();
+
+    const string ComputeWgsl = @"
+struct Params {
+  time   : f32,
+  width  : u32,
+  height : u32,
+  _pad   : u32,
+}
+@group(0) @binding(0) var outTex : texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(1) var<uniform> params : Params;
+
+@compute @workgroup_size(8, 8)
+fn cs(@builtin(global_invocation_id) gid : vec3<u32>) {
+  if (gid.x >= params.width || gid.y >= params.height) { return; }
+  let uv = vec2<f32>(f32(gid.x) / f32(params.width), f32(gid.y) / f32(params.height));
+  let t = params.time;
+  let d = uv - vec2<f32>(0.5, 0.5);
+  let dist = length(d);
+  let angle = atan2(d.y, d.x);
+  let r = sin(dist * 20.0 - t * 2.0) * 0.5 + 0.5;
+  let g = sin(angle * 4.0 + t) * 0.5 + 0.5;
+  let b = cos(dist * 15.0 + t * 1.5) * 0.5 + 0.5;
+  textureStore(outTex, vec2<i32>(gid.xy), vec4<f32>(r, g, b, 1.0));
+}
+";
+
+    const string BlitWgsl = @"
+@group(0) @binding(0) var tex : texture_2d<f32>;
+@group(0) @binding(1) var samp : sampler;
+
+struct VOut {
+  @builtin(position) pos : vec4<f32>,
+  @location(0) uv : vec2<f32>,
+}
+
+@vertex
+fn vs(@builtin(vertex_index) i : u32) -> VOut {
+  var p = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>( 3.0, -1.0),
+    vec2<f32>(-1.0,  3.0),
+  );
+  var uv = array<vec2<f32>, 3>(
+    vec2<f32>(0.0, 1.0),
+    vec2<f32>(2.0, 1.0),
+    vec2<f32>(0.0, -1.0),
+  );
+  var o : VOut;
+  o.pos = vec4<f32>(p[i], 0.0, 1.0);
+  o.uv = uv[i];
+  return o;
+}
+
+@fragment
+fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
+  return textureSample(tex, samp, uv);
+}
+";
+
+    const string GlVertSrc = @"#version 300 es
+out vec2 v_uv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  v_uv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+";
+
+    const string GlFragSrc = @"#version 300 es
+precision mediump float;
+in vec2 v_uv;
+uniform sampler2D u_tex;
+out vec4 out_color;
+void main() {
+  out_color = texture(u_tex, vec2(v_uv.x, 1.0 - v_uv.y));
+}
+";
+
     protected override async Task OnInitializedAsync()
     {
         _report = await RenderPathDetector.DetectAsync(JS);
     }
+
+    async Task StartAsync()
+    {
+        if (_running || _starting) return;
+        _starting = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            await SetupWebGpuAsync();
+            SetupWebGl2();
+            _running = true;
+            _frameCount = 0;
+            _lastFrameTime = JS.Get<double>("performance.now()");
+            _rafCallback = new ActionCallback<double>(OnFrame);
+            ScheduleFrame();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Setup failed: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
+            await StopAsync();
+        }
+        finally
+        {
+            _starting = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task SetupWebGpuAsync()
+    {
+        using var nav = new Navigator();
+        using var gpu = nav.Gpu ?? throw new InvalidOperationException("navigator.gpu unavailable");
+        _adapter = await gpu.RequestAdapter() ?? throw new InvalidOperationException("no adapter");
+        _device = await _adapter.RequestDevice();
+
+        _offscreen = new OffscreenCanvas(Width, Height);
+        _offscreenCtx = _offscreen.GetWebGPUContext()
+            ?? throw new InvalidOperationException("OffscreenCanvas.getContext('webgpu') returned null");
+        _offscreenCtx.Configure(new GPUCanvasConfiguration
+        {
+            Device = _device,
+            Format = CanvasFormat,
+            AlphaMode = "premultiplied",
+        });
+
+        _storageTexture = _device.CreateTexture(new GPUTextureDescriptor
+        {
+            Size = new[] { Width, Height },
+            Format = "rgba8unorm",
+            Usage = GPUTextureUsage.StorageBinding | GPUTextureUsage.TextureBinding,
+        });
+        _storageTextureView = _storageTexture.CreateView();
+
+        _sampler = _device.CreateSampler(new GPUSamplerDescriptor
+        {
+            MagFilter = "linear",
+            MinFilter = "linear",
+        });
+
+        _paramsBuffer = _device.CreateBuffer(new GPUBufferDescriptor
+        {
+            Size = 16,
+            Usage = GPUBufferUsage.Uniform | GPUBufferUsage.CopyDst,
+        });
+
+        _computeShader = _device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = ComputeWgsl });
+        _computePipeline = _device.CreateComputePipeline(new GPUComputePipelineDescriptor
+        {
+            Layout = "auto",
+            Compute = new GPUProgrammableStage { Module = _computeShader, EntryPoint = "cs" },
+        });
+        _computeBindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
+        {
+            Layout = _computePipeline.GetBindGroupLayout(0),
+            Entries = new GPUBindGroupEntry[]
+            {
+                new() { Binding = 0, Resource = _storageTextureView },
+                new() { Binding = 1, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },
+            },
+        });
+
+        _blitShader = _device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = BlitWgsl });
+        _blitPipeline = _device.CreateRenderPipeline(new GPURenderPipelineDescriptor
+        {
+            Layout = "auto",
+            Vertex = new GPUVertexState { Module = _blitShader, EntryPoint = "vs" },
+            Fragment = new GPUFragmentState
+            {
+                Module = _blitShader,
+                EntryPoint = "fs",
+                Targets = new[] { new GPUColorTargetState { Format = CanvasFormat } },
+            },
+            Primitive = new GPUPrimitiveState { Topology = GPUPrimitiveTopology.TriangleList },
+        });
+        _blitBindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
+        {
+            Layout = _blitPipeline.GetBindGroupLayout(0),
+            Entries = new GPUBindGroupEntry[]
+            {
+                new() { Binding = 0, Resource = _storageTextureView },
+                new() { Binding = 1, Resource = _sampler },
+            },
+        });
+    }
+
+    void SetupWebGl2()
+    {
+        using var doc = JS.Get<Document>("document");
+        _canvas = doc.GetElementById<HTMLCanvasElement>("vr-proto-2d-canvas")
+            ?? throw new InvalidOperationException("canvas element not found");
+
+        _gl = _canvas.GetContext<WebGL2RenderingContext>("webgl2")
+            ?? throw new InvalidOperationException("webgl2 context unavailable");
+
+        using var vert = _gl.CreateShader(GL.VERTEX_SHADER);
+        _gl.ShaderSource(vert, GlVertSrc);
+        _gl.CompileShader(vert);
+        if (!_gl.GetShaderParameter<bool>(vert, GL.COMPILE_STATUS))
+        {
+            var log = _gl.GetShaderInfoLog(vert);
+            throw new InvalidOperationException("Vertex shader compile failed: " + log);
+        }
+
+        using var frag = _gl.CreateShader(GL.FRAGMENT_SHADER);
+        _gl.ShaderSource(frag, GlFragSrc);
+        _gl.CompileShader(frag);
+        if (!_gl.GetShaderParameter<bool>(frag, GL.COMPILE_STATUS))
+        {
+            var log = _gl.GetShaderInfoLog(frag);
+            throw new InvalidOperationException("Fragment shader compile failed: " + log);
+        }
+
+        _glProgram = _gl.CreateProgram();
+        _gl.AttachShader(_glProgram, vert);
+        _gl.AttachShader(_glProgram, frag);
+        _gl.LinkProgram(_glProgram);
+        if (!_gl.GetProgramParameter<bool>(_glProgram, GL.LINK_STATUS))
+        {
+            throw new InvalidOperationException("Program link failed: " + _gl.GetProgramInfoLog(_glProgram));
+        }
+
+        _glTexture = _gl.CreateTexture();
+        _gl.BindTexture(GL.TEXTURE_2D, _glTexture);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
+
+        _gl.UseProgram(_glProgram);
+        using var texLoc = _gl.GetUniformLocation(_glProgram, "u_tex");
+        if (texLoc != null) _gl.Uniform1i(texLoc, 0);
+
+        _gl.Viewport(0, 0, Width, Height);
+    }
+
+    void ScheduleFrame()
+    {
+        if (!_running || _rafCallback == null) return;
+        using var win = JS.Get<Window>("window");
+        win.RequestAnimationFrame(_rafCallback);
+    }
+
+    void OnFrame(double time)
+    {
+        if (!_running) return;
+
+        try
+        {
+            // Upload params (time + dims)
+            double s0 = JS.Get<double>("performance.now()");
+            var bytes = new byte[16];
+            BitConverter.TryWriteBytes(bytes.AsSpan(0, 4), (float)(time / 1000.0));
+            BitConverter.TryWriteBytes(bytes.AsSpan(4, 4), (uint)Width);
+            BitConverter.TryWriteBytes(bytes.AsSpan(8, 4), (uint)Height);
+            BitConverter.TryWriteBytes(bytes.AsSpan(12, 4), (uint)0);
+            using (var u8 = new Uint8Array(bytes))
+            {
+                _device!.Queue.JSRef!.CallVoid("writeBuffer", _paramsBuffer, 0, u8);
+            }
+
+            // Compute pass
+            using (var encoder = _device.CreateCommandEncoder())
+            {
+                using (var cp = encoder.BeginComputePass())
+                {
+                    cp.SetPipeline(_computePipeline!);
+                    cp.SetBindGroup(0, _computeBindGroup!);
+                    cp.DispatchWorkgroups((uint)((Width + 7) / 8), (uint)((Height + 7) / 8));
+                    cp.End();
+                }
+                using var cmd = encoder.Finish();
+                _device.Queue.Submit(new[] { cmd });
+            }
+            double s1 = JS.Get<double>("performance.now()");
+            _tCompute.Push(s1 - s0);
+
+            // Render pass: sample storage texture to offscreen canvas
+            using (var encoder = _device.CreateCommandEncoder())
+            {
+                using var currentTexture = _offscreenCtx!.GetCurrentTexture();
+                using var currentView = currentTexture.CreateView();
+                using var rp = encoder.BeginRenderPass(new GPURenderPassDescriptor
+                {
+                    ColorAttachments = new[]
+                    {
+                        new GPURenderPassColorAttachment
+                        {
+                            View = currentView,
+                            LoadOp = GPULoadOp.Clear,
+                            StoreOp = GPUStoreOp.Store,
+                            ClearValue = new GPUColorDict { R = 0, G = 0, B = 0, A = 1 },
+                        }
+                    }
+                });
+                rp.SetPipeline(_blitPipeline!);
+                rp.SetBindGroup(0, _blitBindGroup!);
+                rp.Draw(3);
+                rp.End();
+                using var cmd = encoder.Finish();
+                _device.Queue.Submit(new[] { cmd });
+            }
+            double s2 = JS.Get<double>("performance.now()");
+            _tRender.Push(s2 - s1);
+
+            // transferToImageBitmap
+            using var bitmap = _offscreen!.TransferToImageBitmap();
+            double s3 = JS.Get<double>("performance.now()");
+            _tTransferBitmap.Push(s3 - s2);
+
+            // WebGL2 texImage2D from imageBitmap
+            _gl!.BindTexture(GL.TEXTURE_2D, _glTexture!);
+            _gl.TexImage2D(
+                GL.TEXTURE_2D, 0, (int)GL.RGBA,
+                GL.RGBA, GL.UNSIGNED_BYTE, bitmap);
+            double s4 = JS.Get<double>("performance.now()");
+            _tTexUpload.Push(s4 - s3);
+
+            // WebGL2 draw full-screen triangle
+            _gl.UseProgram(_glProgram!);
+            _gl.ActiveTexture(GL.TEXTURE0);
+            _gl.BindTexture(GL.TEXTURE_2D, _glTexture!);
+            _gl.DrawArrays(GL.TRIANGLES, 0, 3);
+            _gl.Finish();
+            double s5 = JS.Get<double>("performance.now()");
+            _tWebGLDraw.Push(s5 - s4);
+
+            _tTotal.Push(s5 - s0);
+            _frameCount++;
+            double dt = time - _lastFrameTime;
+            if (dt > 0) _lastFps = 1000.0 / dt;
+            _lastFrameTime = time;
+
+            if (_frameCount % 10 == 0) InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Frame error: {ex.GetType().Name}: {ex.Message}";
+            _running = false;
+            InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ScheduleFrame();
+    }
+
+    async Task StopAsync()
+    {
+        _running = false;
+        await DisposeInternalAsync();
+        StateHasChanged();
+    }
+
+    async Task DisposeInternalAsync()
+    {
+        _rafCallback?.Dispose(); _rafCallback = null;
+        _computeBindGroup?.Dispose(); _computeBindGroup = null;
+        _blitBindGroup?.Dispose(); _blitBindGroup = null;
+        _computePipeline?.Dispose(); _computePipeline = null;
+        _blitPipeline?.Dispose(); _blitPipeline = null;
+        _computeShader?.Dispose(); _computeShader = null;
+        _blitShader?.Dispose(); _blitShader = null;
+        _sampler?.Dispose(); _sampler = null;
+        _paramsBuffer?.Dispose(); _paramsBuffer = null;
+        _storageTextureView?.Dispose(); _storageTextureView = null;
+        _storageTexture?.Dispose(); _storageTexture = null;
+        _offscreenCtx?.Dispose(); _offscreenCtx = null;
+        _offscreen?.Dispose(); _offscreen = null;
+        _glTexture?.Dispose(); _glTexture = null;
+        _glProgram?.Dispose(); _glProgram = null;
+        _gl?.Dispose(); _gl = null;
+        _canvas?.Dispose(); _canvas = null;
+        _device?.Dispose(); _device = null;
+        _adapter?.Dispose(); _adapter = null;
+        await Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _running = false;
+        await DisposeInternalAsync();
+    }
+
+    static string Fmt(RollingMs r) =>
+        r.Count == 0 ? "--" : $"avg {r.Avg:0.00}  p95 {r.P95:0.00}  p99 {r.P99:0.00}";
 
     static string PathColor(RenderPath p) => p switch
     {
@@ -55,4 +507,38 @@
         RenderPath.None => "#ef4444",
         _ => "#888",
     };
+
+    sealed class RollingMs
+    {
+        readonly double[] _buf = new double[RollingWindow];
+        int _head = 0;
+        public int Count { get; private set; } = 0;
+        public void Push(double v)
+        {
+            _buf[_head] = v;
+            _head = (_head + 1) % RollingWindow;
+            if (Count < RollingWindow) Count++;
+        }
+        public double Avg
+        {
+            get
+            {
+                if (Count == 0) return 0;
+                double s = 0;
+                for (int i = 0; i < Count; i++) s += _buf[i];
+                return s / Count;
+            }
+        }
+        public double P95 => Percentile(0.95);
+        public double P99 => Percentile(0.99);
+        double Percentile(double p)
+        {
+            if (Count == 0) return 0;
+            var arr = new double[Count];
+            System.Array.Copy(_buf, arr, Count);
+            System.Array.Sort(arr);
+            int idx = (int)Math.Min(Count - 1, Math.Floor(p * (Count - 1)));
+            return arr[idx];
+        }
+    }
 }
