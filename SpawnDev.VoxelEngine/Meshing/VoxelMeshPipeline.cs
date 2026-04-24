@@ -168,37 +168,43 @@ namespace SpawnDev.VoxelEngine.Meshing
             UploadYPadSlab(yPadMinusSlab, ref _yPadMinusStaging, _yPadMinusBuffer!, slabLen);
             UploadYPadSlab(yPadPlusSlab, ref _yPadPlusStaging, _yPadPlusBuffer!, slabLen);
 
+            // Kernel chain: occupancy -> face-cull -> merge(0-3) -> merge(4-5).
+            // All four dispatches run on the same ILGPU default stream, so the runtime
+            // serializes them automatically - no SynchronizeAsync needed between them.
+            // The only load-bearing sync is the one before we CPU-read the counter below.
+            //
             // Step 1: Build occupancy columns
             _occupancyKernel(new Index2D(paddedXZ, paddedXZ),
                 gpuBlocks.View, _occupancyBuffer!.View, paddedXZ, height);
-            await _accelerator.SynchronizeAsync();
 
             // Step 2: Face cull (bitwise), Y-padded
             _faceCullKernel(new Index2D(paddedXZ, paddedXZ),
                 _occupancyBuffer!.View,
                 _yPadMinusBuffer!.View, _yPadPlusBuffer!.View,
                 _faceMaskBuffer!.View, paddedXZ, height);
-            await _accelerator.SynchronizeAsync();
 
             // Step 3: Greedy merge (two dispatches to eliminate +Y/-Y race condition)
             int maxQuads = Math.Min(innerCount * height * 6, _maxQuadsPerSection);
             using var gpuOutputQuads = _accelerator.Allocate1D<long>(maxQuads);
 
-            // Reset counter to 0
+            // Reset counter to 0 (queued on same stream, runs before merge dispatches)
             _counterBuffer!.CopyFromCPU(new int[] { 0 });
 
             // Dispatch 1: faces 0-3 (+X,-X,+Z,-Z) - one thread per layer, no race
             _mergeKernel(new Index2D(sectionSize, 4),
                 _faceMaskBuffer!.View, gpuBlocks.View, gpuOutputQuads.View, _counterBuffer.View,
                 sectionSize, height, paddedXZ, 0);
-            await _accelerator.SynchronizeAsync();
 
             // Dispatch 2: faces 4-5 (+Y,-Y) - one thread per Y layer, full XZ merge
             // Separate dispatch ensures no concurrent access to the same faceMask entries.
+            // Stream serialization (not an explicit sync) is what guarantees dispatch 1
+            // finishes before dispatch 2 reads the shared faceMask buffer.
             // faceStart=4 offsets face indices so dispatch face 0,1 -> kernel face 4,5
             _mergeKernel(new Index2D(height, 2),
                 _faceMaskBuffer!.View, gpuBlocks.View, gpuOutputQuads.View, _counterBuffer.View,
                 sectionSize, height, paddedXZ, 4);
+
+            // Sync before CPU readback of the counter. Only load-bearing sync in the pipeline.
             await _accelerator.SynchronizeAsync();
 
             // Read counter (only 4 bytes - negligible transfer)
