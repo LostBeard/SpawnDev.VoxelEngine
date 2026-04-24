@@ -223,6 +223,180 @@ namespace SpawnDev.VoxelEngine.Meshing
         }
 
         /// <summary>
+        /// Mesh every 16-high (or sectionSize-high) section of a full chunk column in one call,
+        /// feeding raw chunk bytes directly. Skips all-air sections before any kernel dispatch —
+        /// no GPU work is done for sections whose interior blocks are all zero, which for typical
+        /// terrain (geometry concentrated in a narrow Y band) eliminates ~80% of mesh dispatches.
+        ///
+        /// Layout of `blocks` (and each optional neighbor): flat byte[] indexed as
+        ///   b[x + z * sectionSize + y * sectionSize * sectionSize]
+        /// where x,z are in [0,sectionSize) and y is in [0,totalHeight). A value of 0 is air.
+        ///
+        /// XZ neighbor blocks (if supplied) are used only to fill the 1-block padding border so
+        /// boundary faces adjacent to solid neighbors are culled. Y padding within the column is
+        /// built automatically from the chunk's own adjacent sections (no see-through at y=16,32,...).
+        ///
+        /// Returns a list of (sectionY, MeshResult) for sections that produced at least one quad.
+        /// Empty sections are omitted entirely.
+        /// </summary>
+        /// <param name="blocks">Full chunk-column block bytes. Size = sectionSize * sectionSize * totalHeight.</param>
+        /// <param name="neighborXMinus">Blocks for chunk at (cx-1, cz), or null for air neighbor.</param>
+        /// <param name="neighborXPlus">Blocks for chunk at (cx+1, cz), or null for air neighbor.</param>
+        /// <param name="neighborZMinus">Blocks for chunk at (cx, cz-1), or null for air neighbor.</param>
+        /// <param name="neighborZPlus">Blocks for chunk at (cx, cz+1), or null for air neighbor.</param>
+        /// <param name="sectionSize">XZ size of a section. Must be &lt;= 16 for face-mask kernels. Default 16.</param>
+        /// <param name="totalHeight">Total chunk column height. Must be a multiple of sectionSize. Default 256.</param>
+        public async Task<List<(int sectionY, MeshResult mesh)>> MeshChunkColumnAsync(
+            byte[] blocks,
+            byte[]? neighborXMinus = null,
+            byte[]? neighborXPlus = null,
+            byte[]? neighborZMinus = null,
+            byte[]? neighborZPlus = null,
+            int sectionSize = 16,
+            int totalHeight = 256)
+        {
+            if (blocks == null) throw new ArgumentNullException(nameof(blocks));
+            if (sectionSize <= 0) throw new ArgumentOutOfRangeException(nameof(sectionSize));
+            if (totalHeight <= 0 || totalHeight % sectionSize != 0)
+                throw new ArgumentOutOfRangeException(nameof(totalHeight),
+                    $"totalHeight {totalHeight} must be a positive multiple of sectionSize {sectionSize}");
+
+            int sectionsPerColumn = totalHeight / sectionSize;
+            int xzArea = sectionSize * sectionSize;
+            int columnLen = xzArea * totalHeight;
+            if (blocks.Length != columnLen)
+                throw new ArgumentException(
+                    $"blocks length {blocks.Length} does not match sectionSize*sectionSize*totalHeight = {columnLen}",
+                    nameof(blocks));
+            ValidateNeighborLength(neighborXMinus, columnLen, nameof(neighborXMinus));
+            ValidateNeighborLength(neighborXPlus, columnLen, nameof(neighborXPlus));
+            ValidateNeighborLength(neighborZMinus, columnLen, nameof(neighborZMinus));
+            ValidateNeighborLength(neighborZPlus, columnLen, nameof(neighborZPlus));
+
+            int paddedXZ = sectionSize + 2;
+            int paddedSlabLen = paddedXZ * paddedXZ;
+
+            // Reused across sections: padded interior, both Y-pad slabs.
+            var padded = new int[paddedSlabLen * sectionSize];
+            var yPadMinusSlab = new int[paddedSlabLen];
+            var yPadPlusSlab = new int[paddedSlabLen];
+
+            var results = new List<(int, MeshResult)>();
+
+            for (int sy = 0; sy < sectionsPerColumn; sy++)
+            {
+                int yOffset = sy * sectionSize;
+
+                if (IsSectionInteriorAllAir(blocks, yOffset, sectionSize, xzArea))
+                    continue;
+
+                Array.Clear(padded);
+                for (int y = 0; y < sectionSize; y++)
+                {
+                    int paddedYBase = y * paddedSlabLen;
+                    int srcYBase = (yOffset + y) * xzArea;
+
+                    for (int z = 0; z < sectionSize; z++)
+                        for (int x = 0; x < sectionSize; x++)
+                        {
+                            byte b = blocks[x + z * sectionSize + srcYBase];
+                            if (b != 0)
+                                padded[(x + 1) + (z + 1) * paddedXZ + paddedYBase] = PackedBlock.Pack(b);
+                        }
+
+                    if (neighborXMinus != null)
+                        for (int z = 0; z < sectionSize; z++)
+                        {
+                            byte b = neighborXMinus[(sectionSize - 1) + z * sectionSize + srcYBase];
+                            if (b != 0)
+                                padded[0 + (z + 1) * paddedXZ + paddedYBase] = PackedBlock.Pack(b);
+                        }
+
+                    if (neighborXPlus != null)
+                        for (int z = 0; z < sectionSize; z++)
+                        {
+                            byte b = neighborXPlus[0 + z * sectionSize + srcYBase];
+                            if (b != 0)
+                                padded[(sectionSize + 1) + (z + 1) * paddedXZ + paddedYBase] = PackedBlock.Pack(b);
+                        }
+
+                    if (neighborZMinus != null)
+                        for (int x = 0; x < sectionSize; x++)
+                        {
+                            byte b = neighborZMinus[x + (sectionSize - 1) * sectionSize + srcYBase];
+                            if (b != 0)
+                                padded[(x + 1) + 0 * paddedXZ + paddedYBase] = PackedBlock.Pack(b);
+                        }
+
+                    if (neighborZPlus != null)
+                        for (int x = 0; x < sectionSize; x++)
+                        {
+                            byte b = neighborZPlus[x + 0 * sectionSize + srcYBase];
+                            if (b != 0)
+                                padded[(x + 1) + (sectionSize + 1) * paddedXZ + paddedYBase] = PackedBlock.Pack(b);
+                        }
+                }
+
+                int[]? yMinusArg = null;
+                int[]? yPlusArg = null;
+
+                if (sy > 0)
+                {
+                    Array.Clear(yPadMinusSlab);
+                    int srcYBase = (yOffset - 1) * xzArea;
+                    for (int z = 0; z < sectionSize; z++)
+                        for (int x = 0; x < sectionSize; x++)
+                        {
+                            byte b = blocks[x + z * sectionSize + srcYBase];
+                            if (b != 0)
+                                yPadMinusSlab[(x + 1) + (z + 1) * paddedXZ] = PackedBlock.Pack(b);
+                        }
+                    yMinusArg = yPadMinusSlab;
+                }
+
+                if (sy < sectionsPerColumn - 1)
+                {
+                    Array.Clear(yPadPlusSlab);
+                    int srcYBase = (yOffset + sectionSize) * xzArea;
+                    for (int z = 0; z < sectionSize; z++)
+                        for (int x = 0; x < sectionSize; x++)
+                        {
+                            byte b = blocks[x + z * sectionSize + srcYBase];
+                            if (b != 0)
+                                yPadPlusSlab[(x + 1) + (z + 1) * paddedXZ] = PackedBlock.Pack(b);
+                        }
+                    yPlusArg = yPadPlusSlab;
+                }
+
+                var result = await MeshSectionAsync(padded, sectionSize, sectionSize, yMinusArg, yPlusArg);
+                if (result.HasMesh)
+                    results.Add((sy, result));
+            }
+
+            return results;
+        }
+
+        private static bool IsSectionInteriorAllAir(byte[] blocks, int yOffset, int sectionSize, int xzArea)
+        {
+            // Treat any non-zero block byte as "has geometry". Kernel later only emits quads
+            // for cells whose lower 12 bits of PackedBlock are non-zero, which is equivalent
+            // for single-byte block IDs <= 255.
+            int start = yOffset * xzArea;
+            int end = start + sectionSize * xzArea;
+            for (int i = start; i < end; i++)
+                if (blocks[i] != 0) return false;
+            return true;
+        }
+
+        private static void ValidateNeighborLength(byte[]? neighbor, int expectedLen, string paramName)
+        {
+            if (neighbor != null && neighbor.Length != expectedLen)
+                throw new ArgumentException(
+                    $"Neighbor block buffer length {neighbor.Length} does not match expected column length {expectedLen}",
+                    paramName);
+        }
+
+        /// <summary>
         /// Convenience overload: mesh from unpadded block data.
         /// Automatically pads with air (0) on all sides.
         /// Use this when you don't have neighbor section data.
