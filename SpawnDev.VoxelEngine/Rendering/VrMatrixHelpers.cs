@@ -120,8 +120,8 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// a snap threshold triggers a single ±angle rotation, the stick must return near
         /// center before another snap can fire (prevents continuous spin).
         ///
-        /// Convention: stickX > 0 = stick-right = turn RIGHT = yaw decreases (right-hand
-        /// rule about +Y means CW-from-above is negative). stickX < 0 = turn LEFT.
+        /// Convention: stickX &gt; 0 = stick-right = turn RIGHT = yaw decreases (right-hand
+        /// rule about +Y means CW-from-above is negative). stickX &lt; 0 = turn LEFT.
         /// </summary>
         /// <param name="armed">State: true when stick has been released since last snap.</param>
         /// <param name="yawRad">Accumulated yaw in radians. Mutated on snap.</param>
