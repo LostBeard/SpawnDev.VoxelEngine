@@ -356,7 +356,7 @@ void main() {
 
             // 2. Bind the XR framebuffer so WebGL draws into the compositor's target.
             using var fb = _xrLayer.Framebuffer;
-            _gl.JSRef!.CallVoid("bindFramebuffer", GL.FRAMEBUFFER, fb);
+            _gl.BindFramebuffer(GL.FRAMEBUFFER, fb);
 
             // 3. Upload the OffscreenCanvas to our texture (GPU-GPU path).
             _gl.BindTexture(GL.TEXTURE_2D, _glTexture!);

@@ -440,9 +440,10 @@ void main() {
             using var pose = frame.GetViewerPose(_refSpace);
             if (pose == null) return;
 
-            // Use the raw-JSRef bindFramebuffer call that VR.1c uses (known good).
+            // Typed wrapper matches the raw CallVoid pattern VR.1c originally used; see
+            // WebGLRenderingContext.BindFramebuffer for the one-to-one signature.
             using var fb = _xrLayer.Framebuffer;
-            _gl.JSRef!.CallVoid("bindFramebuffer", GL.FRAMEBUFFER, fb);
+            _gl.BindFramebuffer(GL.FRAMEBUFFER, fb);
 
             // Per-frame state reset. Paranoia; belts and suspenders.
             _gl.Disable(GL.CULL_FACE);
