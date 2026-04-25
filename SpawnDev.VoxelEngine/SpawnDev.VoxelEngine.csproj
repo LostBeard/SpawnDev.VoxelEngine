@@ -4,7 +4,8 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<Version>0.1.0</Version>
+		<Version>0.1.0-rc.1</Version>
+		<PackageReleaseNotes>First release candidate. Driven by Lost Spawns deployment - swap to package-ref for GitHub Actions / GitHub Pages.</PackageReleaseNotes>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<EmbedAllSources>true</EmbedAllSources>
