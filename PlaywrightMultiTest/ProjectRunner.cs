@@ -244,33 +244,31 @@ namespace PlaywrightMultiTest
                         await testableProject.Page.WaitForSelectorAsync("table.unit-test-ready", new() { Timeout = 30000 }).ConfigureAwait(false);
                         LogStatus("Test table ready");
 
-                        // get the table
-                        var table = testableProject.Page.Locator("table.unit-test-view");
+                        // Scrape the entire test table in one IPC round-trip.
+                        // The previous implementation called Locator.TextContentAsync
+                        // twice per row, which on big test suites (3800+ rows on
+                        // Codecs, even more on ILGPU) accumulated to 2-5 minutes
+                        // of dead time after the page rendered but before the
+                        // first test ran. EvaluateAsync runs JS in the browser
+                        // and returns the full result as JSON: 7000x fewer IPC
+                        // calls, sub-second regardless of row count.
+                        // (Tuvok's Codecs commit f16b27b - same diff applied here.)
+                        var rowsJson = await testableProject.Page.EvaluateAsync<JsonElement>(@"() => {
+                            const rows = document.querySelectorAll('table.unit-test-view tbody tr');
+                            return Array.from(rows).map(r => ({
+                                typeName: r.querySelector('.test-type-name')?.textContent ?? '',
+                                methodName: r.querySelector('.test-method-name')?.textContent ?? ''
+                            }));
+                        }").ConfigureAwait(false);
 
-                        // get table body
-                        var tbody = table.Locator("tbody");
-
-                        // get all rows in the target table body
-                        var rows = tbody.Locator("tr");
-
-                        // iterate the rows
-                        int rowCount = await rows.CountAsync().ConfigureAwait(false);
-
-                        // wait for the tests to load. This assumes that your Blazor WASM app will render an element with the id "test-list" that contains the list of tests. You would need to implement this in your Blazor WASM app to return the tests you want to run.
-                        // get a list of tests
-
-                        for (int i = 0; i < rowCount; i++)
+                        int totalRows = rowsJson.GetArrayLength();
+                        for (int i = 0; i < totalRows; i++)
                         {
-                            // get the specific row by index
-                            var currentRow = rows.Nth(i);
+                            var row = rowsJson[i];
+                            var typeName = row.GetProperty("typeName").GetString() ?? "";
+                            var methodName = row.GetProperty("methodName").GetString() ?? "";
 
-                            // get test type name
-                            var typeName = await currentRow.Locator(".test-type-name").TextContentAsync().ConfigureAwait(false);
-
-                            // get test method name
-                            var methodName = await currentRow.Locator(".test-method-name").TextContentAsync().ConfigureAwait(false);
-
-                            var rowTest = new ProjectTest(testableProject, typeName!, methodName!, testPageUrl);
+                            var rowTest = new ProjectTest(testableProject, typeName, methodName, testPageUrl);
 
                             if (filter != null)
                             {

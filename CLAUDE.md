@@ -18,11 +18,18 @@ Target: **net10.0**
 | Directory | Purpose |
 |-----------|---------|
 | `Meshing/` | Binary greedy meshing kernels, face culling, occupancy masks |
-| `Culling/` | Frustum, fog, Hi-Z occlusion, Sodium-style graph visibility |
+| `Culling/` | Frustum, fog, Sodium-style graph visibility (Hi-Z reserved for v2) |
 | `Buffers/` | Vertex pool (bucket alloc), compaction, indirect draw buffer |
 | `LOD/` | Super-block reduction, LOD selection, DelegateSpecialization kernels |
 | `Rendering/` | Indirect draw pipeline, reversed-Z depth, draw command builder |
 | `Adaptive/` | Device limit queries, quality controller, thermal response, budget |
+| `Carving/` | Sphere/box/cylinder terraform, NMS-style add/remove modes |
+| `Physics/` | Voxel raycast (DDA), AABB-vs-world collision, sphere queries, structural integrity |
+| `Destruction/` | Radial explosion kernels |
+| `SDF/` | Dual Marching Cubes mesher + SDF noise generation |
+| `Terrain/` | Heightmap providers, biome assignment |
+| `VR/` | Stereo rendering, foveated rendering, WebXR helper |
+| `Caching/` | Chunk persistence layer |
 
 ### Design Principles
 
