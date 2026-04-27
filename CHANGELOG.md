@@ -1,5 +1,16 @@
 # SpawnDev.VoxelEngine Changelog
 
+## 0.1.0-rc.2 (2026-04-28) - Fix unrestorable dep on rc.1
+
+rc.1 was published to nuget.org with a hard dep on `SpawnDev.ILGPU 4.9.2-rc.7`, but rc.7 was a local-feed-only burner build that never made it to nuget.org. External consumers running `dotnet add package SpawnDev.VoxelEngine --version 0.1.0-rc.1` got `NU1102` and could not restore.
+
+### Changes
+
+- **Pin `SpawnDev.ILGPU` to `4.9.2-rc.24`** - the current latest published rc on nuget.org. The kernel + dispatch behaviour we depend on is unchanged from rc.7 (rc.7 to rc.24 is internal P2P / sweep-fix work).
+- **Replace `SpawnDev.BlazorJS` `3.*` wildcard with a pinned `3.5.6`** - same class of bug; floating wildcards can pin to local-feed-only builds at package time. Pinning forces an explicit bump when the dep moves.
+
+No source changes. Same bits, restorable deps. Thanks to Geordi for catching it via the `_audit-nugetorg-deps.ps1` audit script.
+
 ## 0.1.0-rc.1 (2026-04-25) - First Release Candidate
 
 First public release candidate. Driven by Lost Spawns deployment - swap from `<ProjectReference>` to `<PackageReference>` so GitHub Actions / GitHub Pages can build the consumer.
