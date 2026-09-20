@@ -1,7 +1,7 @@
 using System.Numerics;
 using ILGPU.Runtime;
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.JSObjects;
 using SpawnDev.ILGPU.WebGPU;
 using SpawnDev.UnitTesting;
 using SpawnDev.VoxelEngine.Rendering;
@@ -532,28 +532,28 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         });
 
         // ------------------------------------------------------------------
-        // SpawnDev.BlazorJS XRRigidTransform marshaling check
+        // SpawnDev.SpawnJS XRRigidTransform marshaling check
         //
         // This directly verifies my Phase C 2c concern: `new XRRigidTransform(new { x, y, z, w }, null)`
         // - does the anonymous .NET object marshal through Microsoft.JSInterop's System.Text.Json
         // serialization into a JS `{x, y, z, w}` object that the XRRigidTransform constructor
         // accepts. Browser-only (WebXR API is a browser-global). First consumer test -
         // if this fails, locomotion would silently produce identity transforms and the fix
-        // is at the SpawnDev.BlazorJS layer.
+        // is at the SpawnDev.SpawnJS layer.
         // ------------------------------------------------------------------
 
         [TestMethod]
-        public async Task VrMatrix_BlazorJS_XRRigidTransform_AnonymousObjectMarshals() => await RunTest(async accelerator =>
+        public async Task VrMatrix_SpawnJS_XRRigidTransform_AnonymousObjectMarshals() => await RunTest(async accelerator =>
         {
             // WebXR API is a browser global. Browser test hosts (WebGPU/WebGL/Wasm via
-            // Blazor WASM) have a live BlazorJSRuntime; desktop hosts (CPU/CUDA/OpenCL via
+            // Blazor WASM) have a live SpawnJSRuntime; desktop hosts (CPU/CUDA/OpenCL via
             // DemoConsole) don't initialize it. Defensive access + skip on anything that
             // isn't a usable browser window.
-            BlazorJSRuntime? js = null;
-            try { js = BlazorJSRuntime.JS; } catch { }
+            SpawnJSRuntime? js = null;
+            try { js = SpawnJSRuntime.Instance; } catch { }
             if (js == null || !js.IsWindow)
-                throw new UnsupportedTestException("BlazorJS runtime not in a browser window context.");
-            if (js.TypeOf("XRRigidTransform") == "undefined")
+                throw new UnsupportedTestException("SpawnJS runtime not in a browser window context.");
+            if (!js.Has("XRRigidTransform"))
                 throw new UnsupportedTestException("WebXR not available in this browser.");
 
             // The exact shape my ApplyLocomotionFromSnaps uses in VrPrototype.razor.
@@ -572,7 +572,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                     $"XRRigidTransform anonymous-object position did not round-trip. " +
                     $"Expected (1.25, 2.5, -3.75); got ({px}, {py}, {pz}). " +
                     $"If near-zero: JSInterop is dropping anonymous-object properties; " +
-                    $"fix at the SpawnDev.BlazorJS wrapper layer (add a typed overload " +
+                    $"fix at the SpawnDev.SpawnJS wrapper layer (add a typed overload " +
                     $"taking a DOMPointInit or concrete position record).");
             }
 

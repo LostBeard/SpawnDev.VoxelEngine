@@ -1,5 +1,5 @@
 @page "/render-path"
-@using SpawnDev.BlazorJS
+@using SpawnDev.SpawnJS
 @using SpawnDev.VoxelEngine.Rendering
 
 <PageTitle>Render Path Probe</PageTitle>
@@ -52,7 +52,7 @@ else
     </p>
 }
 
-@inject BlazorJSRuntime JS
+@inject SpawnJSRuntime JS
 
 @code {
     RenderPathReport? _report;

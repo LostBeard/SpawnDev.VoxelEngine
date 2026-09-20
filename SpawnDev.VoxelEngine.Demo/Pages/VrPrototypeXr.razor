@@ -1,6 +1,6 @@
 @page "/vr-prototype-xr"
-@using SpawnDev.BlazorJS
-@using SpawnDev.BlazorJS.JSObjects
+@using SpawnDev.SpawnJS
+@using SpawnDev.SpawnJS.JSObjects
 @using SpawnDev.VoxelEngine.Rendering
 @implements IAsyncDisposable
 
@@ -60,7 +60,7 @@
     </div>
 </div>
 
-@inject BlazorJSRuntime JS
+@inject SpawnJSRuntime JS
 
 @code {
     RenderPathReport? _report;
@@ -210,9 +210,10 @@ void main() {
                 },
                 Primitive = new GPUPrimitiveState { Topology = GPUPrimitiveTopology.TriangleList },
             });
+            using var layout = _pipeline.GetBindGroupLayout(0);
             _bindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
             {
-                Layout = _pipeline.GetBindGroupLayout(0),
+                Layout = layout,
                 Entries = new GPUBindGroupEntry[]
                 {
                     new() { Binding = 0, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },

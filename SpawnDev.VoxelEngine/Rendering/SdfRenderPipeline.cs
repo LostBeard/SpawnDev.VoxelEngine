@@ -1,4 +1,4 @@
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS.JSObjects;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -241,9 +241,11 @@ namespace SpawnDev.VoxelEngine.Rendering
             if (_device == null || _pipeline == null || _uniformBuffer == null)
                 return null;
 
+            // GetBindGroupLayout returns a fresh disposable wrapper every call - dispose it.
+            using var layout = _pipeline.GetBindGroupLayout(0);
             var bg = _device.CreateBindGroup(new GPUBindGroupDescriptor
             {
-                Layout = _pipeline.GetBindGroupLayout(0),
+                Layout = layout,
                 Entries = new GPUBindGroupEntry[]
                 {
                     new() { Binding = 0, Resource = new GPUBufferBinding { Buffer = _uniformBuffer } },

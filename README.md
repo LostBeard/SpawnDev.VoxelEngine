@@ -39,24 +39,24 @@ dotnet add package SpawnDev.VoxelEngine --prerelease
 ## Dependencies
 
 - [SpawnDev.ILGPU](https://www.nuget.org/packages/SpawnDev.ILGPU) - GPU compute (WebGPU, WebGL, Wasm, CUDA, OpenCL, CPU)
-- [SpawnDev.BlazorJS](https://www.nuget.org/packages/SpawnDev.BlazorJS) - Browser interop for Blazor WebAssembly
+- [SpawnDev.SpawnJS](https://www.nuget.org/packages/SpawnDev.SpawnJS) - Browser interop for Blazor WebAssembly
 
 ## Quick Start
 
 ```csharp
-using SpawnDev.BlazorJS;
+using SpawnDev.SpawnJS;
 using SpawnDev.VoxelEngine;
 using SpawnDev.VoxelEngine.Carving;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
-builder.Services.AddBlazorJSRuntime();
+builder.Services.AddSpawnJSRuntime();
 
 // One-line registration with Lost Spawns defaults (HD realistic, VoxelSize=0.5).
 // Use AddVoxelEngineAubsCraft() for blocky Minecraft-style defaults,
 // or AddVoxelEngine(cfg => { ... }) to dial in your own values.
 builder.Services.AddVoxelEngineLostSpawns();
 
-await builder.Build().BlazorJSRunAsync();
+await builder.Build().SpawnJSRunAsync();
 ```
 
 ```csharp
@@ -85,7 +85,7 @@ SpawnDev.VoxelEngine  (meshing, culling, LOD, rendering, carving, physics, SDF, 
      |
 SpawnDev.ILGPU        (GPU compute - WebGPU, WebGL, Wasm, CUDA, OpenCL, CPU)
      |
-SpawnDev.BlazorJS     (browser interop)
+SpawnDev.SpawnJS      (browser interop)
 ```
 
 ### Library Layout
@@ -152,7 +152,7 @@ These agents communicate through a shared DevComms system, coordinate tasks auto
 ## Resources
 
 - [SpawnDev.ILGPU](https://github.com/LostBeard/SpawnDev.ILGPU) - GPU compute for .NET (WebGPU, CUDA, OpenCL, CPU)
-- [SpawnDev.BlazorJS](https://github.com/LostBeard/SpawnDev.BlazorJS) - Full JS interop for Blazor WebAssembly
+- [SpawnDev.SpawnJS](https://github.com/LostBeard/SpawnDev.SpawnJS) - Full JS interop for Blazor WebAssembly
 - [ILGPU Documentation](https://ilgpu.net/)
 - [WebGPU Specification](https://www.w3.org/TR/webgpu/)
 - [GitHub Repository](https://github.com/LostBeard/SpawnDev.VoxelEngine)

@@ -84,7 +84,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             float centerZ = size * voxelSize * 0.5f;
             float radius = 2f;
 
-            RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
                 centerX, centerY, centerZ, radius, mode: 0 /* dig */);
             var result = await buffer.CopyToHostAsync();
 
@@ -114,7 +114,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             float centerZ = size * voxelSize * 0.5f;
             float radius = 2f;
 
-            RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
                 centerX, centerY, centerZ, radius, mode: 1 /* fill */);
             var result = await buffer.CopyToHostAsync();
 
@@ -140,7 +140,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             using var buffer = accelerator.Allocate1D(initial);
 
             // Sphere is 1000 units away - well beyond the early-out cutoff
-            RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
                 1000f, 1000f, 1000f, 2f, mode: 0);
             var result = await buffer.CopyToHostAsync();
 
@@ -168,7 +168,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             float centerY = size * voxelSize * 0.5f;
             float centerZ = size * voxelSize * 0.5f;
 
-            RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
                 centerX, centerY, centerZ, radius: 0f, mode: 0);
             var result = await buffer.CopyToHostAsync();
 
@@ -180,7 +180,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 
             // Same check for fill mode.
             using var buffer2 = accelerator.Allocate1D(initial);
-            RunModifySphere(accelerator, buffer2, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, buffer2, size, 0, 0, 0, voxelSize,
                 centerX, centerY, centerZ, radius: 0f, mode: 1);
             var result2 = await buffer2.CopyToHostAsync();
             for (int i = 0; i < result2.Length; i++)
@@ -213,7 +213,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 
             for (int i = 1; i < 4; i++)
             {
-                RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
+                await RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
                     centerX, centerY, centerZ, radius, mode: 0);
                 var snap = await buffer.CopyToHostAsync();
                 snapshots[i] = snap[centerIdx];
@@ -249,7 +249,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 
             for (int i = 1; i < 4; i++)
             {
-                RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
+                await RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
                     centerX, centerY, centerZ, radius, mode: 1);
                 var snap = await buffer.CopyToHostAsync();
                 snapshots[i] = snap[centerIdx];
@@ -277,7 +277,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             float centerZ = size * voxelSize * 0.5f;
             float radius = 2f;
 
-            RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
                 centerX, centerY, centerZ, radius, mode: 0);
             var result = await buffer.CopyToHostAsync();
 
@@ -302,7 +302,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             float centerZ = size * voxelSize * 0.5f;
             float radius = 2f;
 
-            RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, buffer, size, 0, 0, 0, voxelSize,
                 centerX, centerY, centerZ, radius, mode: 1);
             var result = await buffer.CopyToHostAsync();
 
@@ -326,7 +326,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             using var bufA = accelerator.Allocate1D(initialA);
             float cyCommon = size * voxelSize * 0.5f;
             float czCommon = size * voxelSize * 0.5f;
-            RunModifySphere(accelerator, bufA, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, bufA, size, 0, 0, 0, voxelSize,
                 size * voxelSize * 0.5f, cyCommon, czCommon, radius: 2f, mode: 1);
             var a = await bufA.CopyToHostAsync();
 
@@ -335,9 +335,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             using var bufB = accelerator.Allocate1D(initialB);
             float center1X = size * voxelSize * 0.5f - 1.5f;
             float center2X = size * voxelSize * 0.5f + 1.5f;
-            RunModifySphere(accelerator, bufB, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, bufB, size, 0, 0, 0, voxelSize,
                 center1X, cyCommon, czCommon, radius: 2f, mode: 1);
-            RunModifySphere(accelerator, bufB, size, 0, 0, 0, voxelSize,
+            await RunModifySphere(accelerator, bufB, size, 0, 0, 0, voxelSize,
                 center2X, cyCommon, czCommon, radius: 2f, mode: 1);
             var b = await bufB.CopyToHostAsync();
 
@@ -372,7 +372,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             return await buffer.CopyToHostAsync();
         }
 
-        private void RunModifySphere(
+        private async Task RunModifySphere(
             Accelerator accelerator,
             MemoryBuffer1D<short, Stride1D.Dense> buffer, int size,
             float chunkWorldX, float chunkWorldY, float chunkWorldZ, float voxelSize,
@@ -386,7 +386,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             kernel(new Index3D(size, size, size),
                 buffer.View, centerX, centerY, centerZ, radius, mode, blendRadius,
                 chunkWorldX, chunkWorldY, chunkWorldZ, voxelSize, size);
-            accelerator.Synchronize();
+            // do NOT Synchronize() - desktop-only on WebGPU/WebGL/Wasm (ILGPU 5.2+)
+            await accelerator.SynchronizeAsync();
         }
 
         private static short[] FilledSdf(int size, short value)

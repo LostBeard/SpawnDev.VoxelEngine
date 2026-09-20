@@ -1,5 +1,12 @@
 # SpawnDev.VoxelEngine Changelog
 
+## 0.1.0-rc.3 (2026-09-20) - Port BlazorJS to SpawnJS
+
+- **Replace `SpawnDev.BlazorJS` 3.5.6 with `SpawnDev.SpawnJS.Blazor` 2.1.18** (brings `SpawnDev.SpawnJS` 2.1.17).
+- **Bump `SpawnDev.ILGPU` to 5.2.12** - ILGPU 4.9.x still depended on BlazorJS; 5.2.x is the SpawnJS stack.
+- Demo/tests: `AddSpawnJSRuntime` / `SpawnJSRunAsync`; `UnitTesting.Blazor` -> `UnitTesting.Browser` 2.7.0.
+- Dispose `GPURenderPipeline.GetBindGroupLayout` wrappers (`using var layout = ...`).
+
 ## 0.1.0-rc.2 (2026-04-28) - Fix unrestorable dep on rc.1
 
 rc.1 was published to nuget.org with a hard dep on `SpawnDev.ILGPU 4.9.2-rc.7`, but rc.7 was a local-feed-only burner build that never made it to nuget.org. External consumers running `dotnet add package SpawnDev.VoxelEngine --version 0.1.0-rc.1` got `NU1102` and could not restore.

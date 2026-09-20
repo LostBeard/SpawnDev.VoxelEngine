@@ -4,8 +4,8 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<Version>0.1.0-rc.2</Version>
-		<PackageReleaseNotes>Fix unrestorable dep: rc.1 declared SpawnDev.ILGPU 4.9.2-rc.7 which was never published to nuget.org (NU1102 for external consumers). rc.2 pins to the published 4.9.2-rc.24 + replaces the SpawnDev.BlazorJS 3.* wildcard with a pinned 3.5.6.</PackageReleaseNotes>
+		<Version>0.1.0-rc.3</Version>
+		<PackageReleaseNotes>Port from SpawnDev.BlazorJS 3.5.6 to SpawnDev.SpawnJS.Blazor 2.1.18. Bump SpawnDev.ILGPU to 5.2.12 (SpawnJS-based).</PackageReleaseNotes>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<EmbedAllSources>true</EmbedAllSources>
@@ -28,8 +28,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="SpawnDev.ILGPU" Version="4.9.2-rc.24" />
-		<PackageReference Include="SpawnDev.BlazorJS" Version="3.5.6" />
+		<PackageReference Include="SpawnDev.ILGPU" Version="5.2.12" />
+		<PackageReference Include="SpawnDev.SpawnJS.Blazor" Version="2.1.18" />
 	</ItemGroup>
 
 	<ItemGroup>

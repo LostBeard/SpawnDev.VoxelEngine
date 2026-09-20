@@ -1,6 +1,6 @@
 @page "/vr-prototype-2d"
-@using SpawnDev.BlazorJS
-@using SpawnDev.BlazorJS.JSObjects
+@using SpawnDev.SpawnJS
+@using SpawnDev.SpawnJS.JSObjects
 @using SpawnDev.VoxelEngine.Rendering
 @implements IAsyncDisposable
 
@@ -67,7 +67,7 @@
     </div>
 </div>
 
-@inject BlazorJSRuntime JS
+@inject SpawnJSRuntime JS
 
 @code {
     RenderPathReport? _report;
@@ -248,17 +248,19 @@ void main() {
             Primitive = new GPUPrimitiveState { Topology = GPUPrimitiveTopology.TriangleList },
         });
 
+        using var layoutDirect = _pipeline.GetBindGroupLayout(0);
         _bindGroupDirect = _device.CreateBindGroup(new GPUBindGroupDescriptor
         {
-            Layout = _pipeline.GetBindGroupLayout(0),
+            Layout = layoutDirect,
             Entries = new GPUBindGroupEntry[]
             {
                 new() { Binding = 0, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },
             },
         });
+        using var layoutOffscreen = _pipeline.GetBindGroupLayout(0);
         _bindGroupOffscreen = _device.CreateBindGroup(new GPUBindGroupDescriptor
         {
-            Layout = _pipeline.GetBindGroupLayout(0),
+            Layout = layoutOffscreen,
             Entries = new GPUBindGroupEntry[]
             {
                 new() { Binding = 0, Resource = new GPUBufferBinding { Buffer = _paramsBuffer } },

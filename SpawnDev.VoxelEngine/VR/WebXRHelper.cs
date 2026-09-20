@@ -6,8 +6,8 @@ namespace SpawnDev.VoxelEngine.VR
     /// WebXR session management helpers for VR/AR rendering.
     ///
     /// Abstracts the WebXR session lifecycle so consuming projects don't need
-    /// to manage XR state directly. Uses SpawnDev.BlazorJS typed wrappers
-    /// for all WebXR API calls (66 typed WebXR classes in BlazorJS).
+    /// to manage XR state directly. Uses SpawnDev.SpawnJS typed wrappers
+    /// for all WebXR API calls (66 typed WebXR classes in SpawnJS).
     ///
     /// Session types:
     /// - immersive-vr: Quest 3S, desktop VR headsets

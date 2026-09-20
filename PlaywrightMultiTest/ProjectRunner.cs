@@ -1,4 +1,4 @@
-﻿using Microsoft.Playwright;
+using Microsoft.Playwright;
 using SpawnDev.UnitTesting;
 using System.Diagnostics;
 using System.Text.Json;
@@ -110,6 +110,10 @@ namespace PlaywrightMultiTest
                 }
             }
 
+
+            filter ??= Environment.GetEnvironmentVariable("PMT_FILTER");
+            if (!string.IsNullOrEmpty(filter))
+                LogStatus($"Test filter active: '{filter}' (substring match)");
 
             LogStatus("Discovering projects...");
             var projects = ProjectDiscovery.GetWorkspaceRoot();
@@ -270,13 +274,8 @@ namespace PlaywrightMultiTest
 
                             var rowTest = new ProjectTest(testableProject, typeName, methodName, testPageUrl);
 
-                            if (filter != null)
-                            {
-                                if (rowTest.Name != filter && rowTest.TestTypeName != filter && rowTest.TestMethodName != filter)
-                                {
-                                    continue;
-                                }
-                            }
+                            if (filter != null && !MatchesFilter(filter, rowTest))
+                                continue;
 
                             testableProject.Tests.Add(rowTest);
                         }
@@ -327,13 +326,8 @@ namespace PlaywrightMultiTest
                         var methodName = test.Split(".")[1];
 
                         var rowTest = new ProjectTest(testableProject, typeName!, methodName!);
-                        if (filter != null)
-                        {
-                            if (rowTest.Name != filter && rowTest.TestTypeName != filter && rowTest.TestMethodName != filter)
-                            {
-                                continue;
-                            }
-                        }
+                        if (filter != null && !MatchesFilter(filter, rowTest))
+                            continue;
                         testableProject.Tests.Add(rowTest);
 
                         rowTest.TestFunc = async (page) =>
@@ -545,6 +539,21 @@ namespace PlaywrightMultiTest
                     // do any cleanup needed for console projects
                 }
             }
+        }
+
+        // PMT_FILTER / --filter: comma-separated substring match on Name, TestTypeName, or TestMethodName.
+        private static bool MatchesFilter(string filter, ProjectTest t)
+        {
+            foreach (var term in filter.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if ((t.Name?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (t.TestTypeName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (t.TestMethodName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

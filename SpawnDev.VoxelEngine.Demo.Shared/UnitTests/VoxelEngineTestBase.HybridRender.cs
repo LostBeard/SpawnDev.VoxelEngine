@@ -1,6 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS.JSObjects;
 using SpawnDev.UnitTesting;
 using SpawnDev.VoxelEngine.Meshing;
 using SpawnDev.VoxelEngine.Rendering;

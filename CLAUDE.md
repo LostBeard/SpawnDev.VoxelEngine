@@ -55,7 +55,7 @@ Both use project references during development. NuGet package when stable.
 ### Dependencies
 
 - `SpawnDev.ILGPU` - GPU compute (all 6 backends)
-- `SpawnDev.BlazorJS` - Browser interop, Web Workers
+- `SpawnDev.SpawnJS.Blazor` - Browser interop, Web Workers
 
 No other external dependencies.
 

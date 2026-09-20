@@ -1,5 +1,5 @@
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.JSObjects;
 
 namespace SpawnDev.VoxelEngine.Rendering
 {
@@ -92,7 +92,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// Probe the current browser. Safe to call at consumer app init. Does not consume the
         /// adapter (only reads features/limits/info).
         /// </summary>
-        public static async Task<RenderPathReport> DetectAsync(BlazorJSRuntime js)
+        public static async Task<RenderPathReport> DetectAsync(SpawnJSRuntime js)
         {
             // WebGPU presence. If navigator.gpu is undefined, nothing else matters.
             using var nav = new Navigator();
@@ -121,7 +121,8 @@ namespace SpawnDev.VoxelEngine.Rendering
             //   (2) expected methods present on the prototype -- backing impl is wired up
             // Only treat the binding as usable when BOTH pass; "HasXRGPUBindingClass && !Methods" is
             // the stub-class signal and should route the consumer to the hybrid fallback.
-            bool hasXRGPUBindingClass = !js.IsUndefined("XRGPUBinding");
+            // SpawnJS: Has(path) replaces BlazorJS IsUndefined; TypeOf(path) is inherited from SpawnJSObjectReference.
+            bool hasXRGPUBindingClass = js.Has("XRGPUBinding");
             bool hasXRGPUBindingMethods = false;
             if (hasXRGPUBindingClass)
             {

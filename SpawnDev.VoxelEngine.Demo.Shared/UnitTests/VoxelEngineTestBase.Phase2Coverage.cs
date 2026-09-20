@@ -5,7 +5,7 @@ using SpawnDev.VoxelEngine.Meshing;
 using SpawnDev.VoxelEngine.Rendering;
 using SpawnDev.VoxelEngine.VR;
 using ILGPU.Runtime;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS.JSObjects;
 using SpawnDev.ILGPU.WebGPU;
 using SpawnDev.VoxelEngine.Adaptive;
 
