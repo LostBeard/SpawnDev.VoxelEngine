@@ -77,3 +77,4 @@ _debugdump/
 /PlaywrightMultiTest/WGSLDumps
 /PlaywrightMultiTest/init_status.log
 /_ilgpudump/
+/_run_pmt_spawnjs.cmd
