@@ -5,6 +5,19 @@ using ILGPU.Runtime;
 namespace SpawnDev.VoxelEngine.Destruction
 {
     /// <summary>
+    /// Scalar params for GPU sphere destroy/fill. Packed so the kernel fits
+    /// LoadAutoGroupedStreamKernel's Index+14 arity cap.
+    /// </summary>
+    public struct SphereOpParams
+    {
+        public float CenterX, CenterY, CenterZ, RadiusSq;
+        public int PackedBlock; // destroy ignores; fill writes this PackedBlock value
+        public int SizeXZ, SizeY;
+        public int MinX, MinY, MinZ;
+        public int RangeX, RangeY, RangeZ;
+    }
+
+    /// <summary>
     /// GPU-accelerated explosion/destruction system.
     ///
     /// DestroyBlocksInSphere: marks all blocks within radius as air (type 0).
@@ -142,35 +155,160 @@ namespace SpawnDev.VoxelEngine.Destruction
             Index1D index,
             ArrayView<int> blocks,
             ArrayView<int> destroyedCount,
-            float centerX, float centerY, float centerZ,
-            float radiusSq,
-            int sizeXZ, int sizeY,
-            int minX, int minY, int minZ,
-            int rangeX, int rangeY, int rangeZ)
+            SphereOpParams p)
         {
-            int rx = index % rangeX;
-            int rz = (index / rangeX) % rangeZ;
-            int ry = index / (rangeX * rangeZ);
+            int rx = index % p.RangeX;
+            int rz = (index / p.RangeX) % p.RangeZ;
+            int ry = index / (p.RangeX * p.RangeZ);
 
-            if (ry >= rangeY) return;
+            if (ry >= p.RangeY) return;
 
-            int x = minX + rx;
-            int y = minY + ry;
-            int z = minZ + rz;
+            int x = p.MinX + rx;
+            int y = p.MinY + ry;
+            int z = p.MinZ + rz;
 
-            if (x >= sizeXZ || y >= sizeY || z >= sizeXZ) return;
+            if (x >= p.SizeXZ || y >= p.SizeY || z >= p.SizeXZ) return;
 
-            float dx = (x + 0.5f) - centerX;
-            float dy = (y + 0.5f) - centerY;
-            float dz = (z + 0.5f) - centerZ;
-            if (dx * dx + dy * dy + dz * dz > radiusSq) return;
+            float dx = (x + 0.5f) - p.CenterX;
+            float dy = (y + 0.5f) - p.CenterY;
+            float dz = (z + 0.5f) - p.CenterZ;
+            if (dx * dx + dy * dy + dz * dz > p.RadiusSq) return;
 
-            int idx = x + z * sizeXZ + y * sizeXZ * sizeXZ;
+            int idx = x + z * p.SizeXZ + y * p.SizeXZ * p.SizeXZ;
             int packed = blocks[idx];
             if ((packed & 0xFFF) == 0) return; // already air
 
             blocks[idx] = 0;
             Atomic.Add(ref destroyedCount[0], 1);
+        }
+
+        /// <summary>
+        /// GPU kernel: fill air cells within sphere with PackedBlock. Skips non-air.
+        /// </summary>
+        public static void FillKernel(
+            Index1D index,
+            ArrayView<int> blocks,
+            ArrayView<int> filledCount,
+            SphereOpParams p)
+        {
+            int rx = index % p.RangeX;
+            int rz = (index / p.RangeX) % p.RangeZ;
+            int ry = index / (p.RangeX * p.RangeZ);
+
+            if (ry >= p.RangeY) return;
+
+            int x = p.MinX + rx;
+            int y = p.MinY + ry;
+            int z = p.MinZ + rz;
+
+            if (x >= p.SizeXZ || y >= p.SizeY || z >= p.SizeXZ) return;
+
+            float dx = (x + 0.5f) - p.CenterX;
+            float dy = (y + 0.5f) - p.CenterY;
+            float dz = (z + 0.5f) - p.CenterZ;
+            if (dx * dx + dy * dy + dz * dz > p.RadiusSq) return;
+
+            int idx = x + z * p.SizeXZ + y * p.SizeXZ * p.SizeXZ;
+            int packed = blocks[idx];
+            if ((packed & 0xFFF) != 0) return; // already solid
+
+            blocks[idx] = p.PackedBlock;
+            Atomic.Add(ref filledCount[0], 1);
+        }
+
+        /// <summary>
+        /// CPU: destroy blocks in a byte[] column (LostSpawns / blocky path).
+        /// Layout matches MeshChunkColumnAsync: x + z*sizeXZ + y*sizeXZ*sizeXZ.
+        /// Coordinates are local to the column (x,z in [0,sizeXZ), y in [0,sizeY)).
+        /// </summary>
+        public static int DestroyInSphereBytes(
+            Span<byte> blocks,
+            int sizeXZ, int sizeY,
+            float centerX, float centerY, float centerZ,
+            float radius)
+        {
+            float radiusSq = radius * radius;
+            int destroyed = 0;
+            int minX = Math.Max(0, (int)MathF.Floor(centerX - radius));
+            int minY = Math.Max(0, (int)MathF.Floor(centerY - radius));
+            int minZ = Math.Max(0, (int)MathF.Floor(centerZ - radius));
+            int maxX = Math.Min(sizeXZ - 1, (int)MathF.Floor(centerX + radius));
+            int maxY = Math.Min(sizeY - 1, (int)MathF.Floor(centerY + radius));
+            int maxZ = Math.Min(sizeXZ - 1, (int)MathF.Floor(centerZ + radius));
+
+            for (int y = minY; y <= maxY; y++)
+            for (int z = minZ; z <= maxZ; z++)
+            for (int x = minX; x <= maxX; x++)
+            {
+                float dx = (x + 0.5f) - centerX;
+                float dy = (y + 0.5f) - centerY;
+                float dz = (z + 0.5f) - centerZ;
+                if (dx * dx + dy * dy + dz * dz > radiusSq) continue;
+                int idx = x + z * sizeXZ + y * sizeXZ * sizeXZ;
+                if (blocks[idx] == 0) continue;
+                blocks[idx] = 0;
+                destroyed++;
+            }
+            return destroyed;
+        }
+
+        /// <summary>
+        /// CPU: fill air cells in a byte[] column within sphere. No overwrite of solid.
+        /// </summary>
+        public static int FillInSphereBytes(
+            Span<byte> blocks,
+            int sizeXZ, int sizeY,
+            float centerX, float centerY, float centerZ,
+            float radius,
+            byte blockType)
+        {
+            if (blockType == 0) return 0;
+            float radiusSq = radius * radius;
+            int filled = 0;
+            int minX = Math.Max(0, (int)MathF.Floor(centerX - radius));
+            int minY = Math.Max(0, (int)MathF.Floor(centerY - radius));
+            int minZ = Math.Max(0, (int)MathF.Floor(centerZ - radius));
+            int maxX = Math.Min(sizeXZ - 1, (int)MathF.Floor(centerX + radius));
+            int maxY = Math.Min(sizeY - 1, (int)MathF.Floor(centerY + radius));
+            int maxZ = Math.Min(sizeXZ - 1, (int)MathF.Floor(centerZ + radius));
+
+            for (int y = minY; y <= maxY; y++)
+            for (int z = minZ; z <= maxZ; z++)
+            for (int x = minX; x <= maxX; x++)
+            {
+                float dx = (x + 0.5f) - centerX;
+                float dy = (y + 0.5f) - centerY;
+                float dz = (z + 0.5f) - centerZ;
+                if (dx * dx + dy * dy + dz * dz > radiusSq) continue;
+                int idx = x + z * sizeXZ + y * sizeXZ * sizeXZ;
+                if (blocks[idx] != 0) continue;
+                blocks[idx] = blockType;
+                filled++;
+            }
+            return filled;
+        }
+
+        /// <summary>
+        /// Collect section coords touched by a sphere in voxel space (VoxelSize=1, BaseY=0).
+        /// Used by LostSpawns dirty remesh queue without constructing a full VoxelEngineConfig.
+        /// </summary>
+        public static void CollectAffectedSections(
+            float voxelCenterX, float voxelCenterY, float voxelCenterZ,
+            float voxelRadius,
+            int sectionSize,
+            HashSet<SectionCoord> into)
+        {
+            int minSx = (int)MathF.Floor((voxelCenterX - voxelRadius) / sectionSize);
+            int maxSx = (int)MathF.Floor((voxelCenterX + voxelRadius) / sectionSize);
+            int minSy = (int)MathF.Floor((voxelCenterY - voxelRadius) / sectionSize);
+            int maxSy = (int)MathF.Floor((voxelCenterY + voxelRadius) / sectionSize);
+            int minSz = (int)MathF.Floor((voxelCenterZ - voxelRadius) / sectionSize);
+            int maxSz = (int)MathF.Floor((voxelCenterZ + voxelRadius) / sectionSize);
+
+            for (int sy = minSy; sy <= maxSy; sy++)
+                for (int sz = minSz; sz <= maxSz; sz++)
+                    for (int sx = minSx; sx <= maxSx; sx++)
+                        into.Add(new SectionCoord(sx, sy, sz));
         }
 
         /// <summary>
@@ -183,27 +321,13 @@ namespace SpawnDev.VoxelEngine.Destruction
         {
             var affected = new HashSet<SectionCoord>();
             float vs = config.VoxelSize;
-            int ss = config.SectionSize;
-
-            // Convert to voxel space
-            float voxelRadius = worldRadius / vs;
-            float vx = worldCenter.X / vs;
-            float vy = (worldCenter.Y - config.BaseY) / vs;
-            float vz = worldCenter.Z / vs;
-
-            // Section range
-            int minSx = (int)MathF.Floor((vx - voxelRadius) / ss);
-            int maxSx = (int)MathF.Floor((vx + voxelRadius) / ss);
-            int minSy = (int)MathF.Floor((vy - voxelRadius) / ss);
-            int maxSy = (int)MathF.Floor((vy + voxelRadius) / ss);
-            int minSz = (int)MathF.Floor((vz - voxelRadius) / ss);
-            int maxSz = (int)MathF.Floor((vz + voxelRadius) / ss);
-
-            for (int sy = minSy; sy <= maxSy; sy++)
-                for (int sz = minSz; sz <= maxSz; sz++)
-                    for (int sx = minSx; sx <= maxSx; sx++)
-                        affected.Add(new SectionCoord(sx, sy, sz));
-
+            CollectAffectedSections(
+                worldCenter.X / vs,
+                (worldCenter.Y - config.BaseY) / vs,
+                worldCenter.Z / vs,
+                worldRadius / vs,
+                config.SectionSize,
+                affected);
             return affected;
         }
     }

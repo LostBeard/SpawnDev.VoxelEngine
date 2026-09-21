@@ -35,8 +35,16 @@ namespace SpawnDev.VoxelEngine.Meshing
         private MemoryBuffer1D<long, Stride1D.Dense>? _yPadMinusBuffer;
         private MemoryBuffer1D<long, Stride1D.Dense>? _yPadPlusBuffer;
         private MemoryBuffer1D<int, Stride1D.Dense>? _counterBuffer;
+        // Reused padded-block upload buffer - do NOT Allocate1D(padded) every section.
+        private MemoryBuffer1D<int, Stride1D.Dense>? _gpuBlocksBuffer;
+        private int _gpuBlocksCapacity;
         private long[]? _yPadMinusStaging;
         private long[]? _yPadPlusStaging;
+        // CPU staging for MeshChunkColumnAsync - reused across remesh calls (dig hot path).
+        private int[]? _paddedStaging;
+        private int[]? _yPadMinusIntStaging;
+        private int[]? _yPadPlusIntStaging;
+        private int[]? _uploadPrefix; // exact-length GPU upload when staging is oversized
         private int _lastPaddedXZ;
         private int _lastInnerCount;
 
@@ -147,6 +155,11 @@ namespace SpawnDev.VoxelEngine.Meshing
             int paddedXZ = sectionSize + 2;
             int innerXZ = sectionSize;
             int innerCount = innerXZ * innerXZ;
+            int expectedLen = paddedXZ * paddedXZ * height;
+            if (paddedBlocks.Length < expectedLen)
+                throw new ArgumentException(
+                    $"paddedBlocks length {paddedBlocks.Length} is less than (sectionSize+2)^2 * height = {expectedLen}",
+                    nameof(paddedBlocks));
 
             int slabLen = paddedXZ * paddedXZ;
             if (yPadMinusSlab != null && yPadMinusSlab.Length != slabLen)
@@ -160,9 +173,19 @@ namespace SpawnDev.VoxelEngine.Meshing
 
             // Ensure shared intermediate buffers are large enough
             EnsureBuffers(paddedXZ, innerCount, height);
+            EnsureGpuBlocksCapacity(expectedLen);
 
-            // Upload blocks
-            using var gpuBlocks = _accelerator.Allocate1D(paddedBlocks);
+            // Upload into reused GPU buffer (dig/remesh hot path - no per-call Allocate1D).
+            // CopyFromCPU requires a T[] of matching view length - use prefix scratch if staging is oversized.
+            int[] uploadSrc = paddedBlocks;
+            if (paddedBlocks.Length != expectedLen)
+            {
+                if (_uploadPrefix == null || _uploadPrefix.Length != expectedLen)
+                    _uploadPrefix = new int[expectedLen];
+                Array.Copy(paddedBlocks, 0, _uploadPrefix, 0, expectedLen);
+                uploadSrc = _uploadPrefix;
+            }
+            _gpuBlocksBuffer!.View.SubView(0, expectedLen).CopyFromCPU(uploadSrc);
 
             // Step 0: Prepare Y-pad slabs. Bit 0 of each long = solid (lower 12 bits non-zero in the PackedBlock source).
             UploadYPadSlab(yPadMinusSlab, ref _yPadMinusStaging, _yPadMinusBuffer!, slabLen);
@@ -174,8 +197,9 @@ namespace SpawnDev.VoxelEngine.Meshing
             // The only load-bearing sync is the one before we CPU-read the counter below.
             //
             // Step 1: Build occupancy columns
+            var blocksView = _gpuBlocksBuffer.View.SubView(0, expectedLen);
             _occupancyKernel(new Index2D(paddedXZ, paddedXZ),
-                gpuBlocks.View, _occupancyBuffer!.View, paddedXZ, height);
+                blocksView, _occupancyBuffer!.View, paddedXZ, height);
 
             // Step 2: Face cull (bitwise), Y-padded
             _faceCullKernel(new Index2D(paddedXZ, paddedXZ),
@@ -192,7 +216,7 @@ namespace SpawnDev.VoxelEngine.Meshing
 
             // Dispatch 1: faces 0-3 (+X,-X,+Z,-Z) - one thread per layer, no race
             _mergeKernel(new Index2D(sectionSize, 4),
-                _faceMaskBuffer!.View, gpuBlocks.View, gpuOutputQuads.View, _counterBuffer.View,
+                _faceMaskBuffer!.View, blocksView, gpuOutputQuads.View, _counterBuffer.View,
                 sectionSize, height, paddedXZ, 0);
 
             // Dispatch 2: faces 4-5 (+Y,-Y) - one thread per Y layer, full XZ merge
@@ -201,7 +225,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             // finishes before dispatch 2 reads the shared faceMask buffer.
             // faceStart=4 offsets face indices so dispatch face 0,1 -> kernel face 4,5
             _mergeKernel(new Index2D(height, 2),
-                _faceMaskBuffer!.View, gpuBlocks.View, gpuOutputQuads.View, _counterBuffer.View,
+                _faceMaskBuffer!.View, blocksView, gpuOutputQuads.View, _counterBuffer.View,
                 sectionSize, height, paddedXZ, 4);
 
             // Sync before CPU readback of the counter. Only load-bearing sync in the pipeline.
@@ -252,7 +276,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// <param name="neighborZPlus">Blocks for chunk at (cx, cz+1), or null for air neighbor.</param>
         /// <param name="sectionSize">XZ size of a section. Must be &lt;= 16 for face-mask kernels. Default 16.</param>
         /// <param name="totalHeight">Total chunk column height. Must be a multiple of sectionSize. Default 256.</param>
-        public async Task<List<(int sectionY, MeshResult mesh)>> MeshChunkColumnAsync(
+        public Task<List<(int sectionY, MeshResult mesh)>> MeshChunkColumnAsync(
             byte[] blocks,
             byte[]? neighborXMinus = null,
             byte[]? neighborXPlus = null,
@@ -260,6 +284,53 @@ namespace SpawnDev.VoxelEngine.Meshing
             byte[]? neighborZPlus = null,
             int sectionSize = 16,
             int totalHeight = 256)
+            => MeshChunkColumnAsync(blocks, neighborXMinus, neighborXPlus, neighborZMinus, neighborZPlus,
+                sectionSize, totalHeight, minSectionY: null, maxSectionY: null, sectionYs: null);
+
+        /// <summary>
+        /// Mesh only sections whose section-Y index is in [minSectionY, maxSectionY] inclusive.
+        /// Prefer this on dig/carve remesh so untouched bedrock/sky sections are not re-uploaded.
+        /// </summary>
+        public Task<List<(int sectionY, MeshResult mesh)>> MeshChunkColumnAsync(
+            byte[] blocks,
+            byte[]? neighborXMinus,
+            byte[]? neighborXPlus,
+            byte[]? neighborZMinus,
+            byte[]? neighborZPlus,
+            int sectionSize,
+            int totalHeight,
+            int minSectionY,
+            int maxSectionY)
+            => MeshChunkColumnAsync(blocks, neighborXMinus, neighborXPlus, neighborZMinus, neighborZPlus,
+                sectionSize, totalHeight, minSectionY, maxSectionY, sectionYs: null);
+
+        /// <summary>
+        /// Mesh only the listed section-Y indices. Duplicate indices are ignored.
+        /// Null/empty <paramref name="sectionYs"/> meshes the full column (same as the base overload).
+        /// </summary>
+        public Task<List<(int sectionY, MeshResult mesh)>> MeshChunkColumnSectionsAsync(
+            byte[] blocks,
+            IReadOnlyCollection<int> sectionYs,
+            byte[]? neighborXMinus = null,
+            byte[]? neighborXPlus = null,
+            byte[]? neighborZMinus = null,
+            byte[]? neighborZPlus = null,
+            int sectionSize = 16,
+            int totalHeight = 256)
+            => MeshChunkColumnAsync(blocks, neighborXMinus, neighborXPlus, neighborZMinus, neighborZPlus,
+                sectionSize, totalHeight, minSectionY: null, maxSectionY: null, sectionYs: sectionYs);
+
+        private async Task<List<(int sectionY, MeshResult mesh)>> MeshChunkColumnAsync(
+            byte[] blocks,
+            byte[]? neighborXMinus,
+            byte[]? neighborXPlus,
+            byte[]? neighborZMinus,
+            byte[]? neighborZPlus,
+            int sectionSize,
+            int totalHeight,
+            int? minSectionY,
+            int? maxSectionY,
+            IReadOnlyCollection<int>? sectionYs)
         {
             if (blocks == null) throw new ArgumentNullException(nameof(blocks));
             if (sectionSize <= 0) throw new ArgumentOutOfRangeException(nameof(sectionSize));
@@ -281,22 +352,47 @@ namespace SpawnDev.VoxelEngine.Meshing
 
             int paddedXZ = sectionSize + 2;
             int paddedSlabLen = paddedXZ * paddedXZ;
+            int paddedLen = paddedSlabLen * sectionSize;
 
-            // Reused across sections: padded interior, both Y-pad slabs.
-            var padded = new int[paddedSlabLen * sectionSize];
-            var yPadMinusSlab = new int[paddedSlabLen];
-            var yPadPlusSlab = new int[paddedSlabLen];
+            // Reuse member staging - dig remesh calls this every stroke; new int[] each time is treason.
+            if (_paddedStaging == null || _paddedStaging.Length < paddedLen)
+                _paddedStaging = new int[paddedLen];
+            if (_yPadMinusIntStaging == null || _yPadMinusIntStaging.Length < paddedSlabLen)
+                _yPadMinusIntStaging = new int[paddedSlabLen];
+            if (_yPadPlusIntStaging == null || _yPadPlusIntStaging.Length < paddedSlabLen)
+                _yPadPlusIntStaging = new int[paddedSlabLen];
+
+            var padded = _paddedStaging;
+            var yPadMinusSlab = _yPadMinusIntStaging;
+            var yPadPlusSlab = _yPadPlusIntStaging;
+
+            HashSet<int>? syFilter = null;
+            if (sectionYs != null && sectionYs.Count > 0)
+            {
+                syFilter = new HashSet<int>(sectionYs.Count);
+                foreach (int sy in sectionYs)
+                    if (sy >= 0 && sy < sectionsPerColumn)
+                        syFilter.Add(sy);
+            }
+
+            int syStart = minSectionY ?? 0;
+            int syEnd = maxSectionY ?? (sectionsPerColumn - 1);
+            if (syStart < 0) syStart = 0;
+            if (syEnd >= sectionsPerColumn) syEnd = sectionsPerColumn - 1;
 
             var results = new List<(int, MeshResult)>();
 
-            for (int sy = 0; sy < sectionsPerColumn; sy++)
+            for (int sy = syStart; sy <= syEnd; sy++)
             {
+                if (syFilter != null && !syFilter.Contains(sy))
+                    continue;
+
                 int yOffset = sy * sectionSize;
 
                 if (IsSectionInteriorAllAir(blocks, yOffset, sectionSize, xzArea))
                     continue;
 
-                Array.Clear(padded);
+                Array.Clear(padded, 0, paddedLen);
                 for (int y = 0; y < sectionSize; y++)
                 {
                     int paddedYBase = y * paddedSlabLen;
@@ -348,7 +444,7 @@ namespace SpawnDev.VoxelEngine.Meshing
 
                 if (sy > 0)
                 {
-                    Array.Clear(yPadMinusSlab);
+                    Array.Clear(yPadMinusSlab, 0, paddedSlabLen);
                     int srcYBase = (yOffset - 1) * xzArea;
                     for (int z = 0; z < sectionSize; z++)
                         for (int x = 0; x < sectionSize; x++)
@@ -362,7 +458,7 @@ namespace SpawnDev.VoxelEngine.Meshing
 
                 if (sy < sectionsPerColumn - 1)
                 {
-                    Array.Clear(yPadPlusSlab);
+                    Array.Clear(yPadPlusSlab, 0, paddedSlabLen);
                     int srcYBase = (yOffset + sectionSize) * xzArea;
                     for (int z = 0; z < sectionSize; z++)
                         for (int x = 0; x < sectionSize; x++)
@@ -380,6 +476,68 @@ namespace SpawnDev.VoxelEngine.Meshing
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// Upload a full column of byte block IDs into a persistent GPU int buffer (PackedBlock).
+        /// Caller owns the returned buffer and must dispose it. Use with MeshFromGpuColumnAsync
+        /// or ExplosionKernels.DestroyKernel so dig edits stay GPU-resident.
+        /// </summary>
+        public MemoryBuffer1D<int, Stride1D.Dense> UploadColumnPacked(byte[] blocks)
+        {
+            if (blocks == null) throw new ArgumentNullException(nameof(blocks));
+            var packed = new int[blocks.Length];
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                byte b = blocks[i];
+                if (b != 0) packed[i] = PackedBlock.Pack(b);
+            }
+            return _accelerator.Allocate1D(packed);
+        }
+
+        /// <summary>
+        /// Copy a contiguous Y slab of a byte column into an existing GPU packed column buffer.
+        /// Indices are flat column indices: start = yStart * xzArea, length = yCount * xzArea.
+        /// Avoids re-uploading the entire 65KB+ column when only a dig AABB changed.
+        /// </summary>
+        public void CopyColumnSlabFromCpu(
+            MemoryBuffer1D<int, Stride1D.Dense> gpuColumn,
+            byte[] blocks,
+            int yStart,
+            int yCount,
+            int sectionSize)
+        {
+            if (gpuColumn == null) throw new ArgumentNullException(nameof(gpuColumn));
+            if (blocks == null) throw new ArgumentNullException(nameof(blocks));
+            if (yCount <= 0) return;
+
+            int xzArea = sectionSize * sectionSize;
+            int start = yStart * xzArea;
+            int len = yCount * xzArea;
+            if (start < 0 || start + len > blocks.Length)
+                throw new ArgumentOutOfRangeException(nameof(yStart),
+                    $"Slab [{yStart},{yStart + yCount}) out of column bounds");
+            if (start + len > gpuColumn.Length)
+                throw new ArgumentOutOfRangeException(nameof(gpuColumn), "GPU column shorter than slab");
+
+            // Exact-length array required by CopyFromCPU on SubView.
+            if (_uploadPrefix == null || _uploadPrefix.Length != len)
+                _uploadPrefix = new int[len];
+            for (int i = 0; i < len; i++)
+            {
+                byte b = blocks[start + i];
+                _uploadPrefix[i] = b != 0 ? PackedBlock.Pack(b) : 0;
+            }
+            gpuColumn.View.SubView(start, len).CopyFromCPU(_uploadPrefix);
+        }
+
+        private void EnsureGpuBlocksCapacity(int needed)
+        {
+            if (_gpuBlocksBuffer != null && _gpuBlocksCapacity >= needed)
+                return;
+            _gpuBlocksBuffer?.Dispose();
+            _gpuBlocksCapacity = Math.Max(needed, 18 * 18 * 16); // default one padded section
+            _gpuBlocksBuffer = _accelerator.Allocate1D<int>(_gpuBlocksCapacity);
         }
 
         private static bool IsSectionInteriorAllAir(byte[] blocks, int yOffset, int sectionSize, int xzArea)
@@ -490,6 +648,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             _yPadMinusBuffer?.Dispose();
             _yPadPlusBuffer?.Dispose();
             _counterBuffer?.Dispose();
+            _gpuBlocksBuffer?.Dispose();
             IsReady = false;
         }
     }

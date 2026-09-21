@@ -2,6 +2,7 @@ using ILGPU;
 using ILGPU.Runtime;
 using SpawnDev.ILGPU;
 using SpawnDev.UnitTesting;
+using SpawnDev.VoxelEngine.Destruction;
 using SpawnDev.VoxelEngine.Meshing;
 
 namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
@@ -311,6 +312,159 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 throw new Exception("Expected ArgumentOutOfRangeException for non-multiple totalHeight");
             }
             catch (ArgumentOutOfRangeException) { /* expected */ }
+        });
+        /// <summary>
+        /// Y-range overload: only mesh sections in [minSectionY, maxSectionY]. A column with
+        /// geometry in sy=0 and sy=3 must skip sy=1 and sy=2 entirely when asked for [0,0].
+        /// </summary>
+        [TestMethod]
+        public async Task MeshChunkColumn_YRange_OnlyMeshesRequestedSections() => await RunTest(async accelerator =>
+        {
+            // Solid blocks in sy=0 (y 0-3) and sy=3 (y 12-15).
+            var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
+                (x, y, z) => (y < 4 || y >= 12) ? (byte)1 : (byte)0);
+
+            using var pipeline = new VoxelMeshPipeline(accelerator);
+            var results = await pipeline.MeshChunkColumnAsync(
+                blocks, null, null, null, null,
+                TestSectionSize, TestTotalHeight,
+                minSectionY: 0, maxSectionY: 0);
+
+            try
+            {
+                if (results.Count != 1)
+                    throw new Exception($"Expected 1 section in Y-range [0,0], got {results.Count}");
+                if (results[0].sectionY != 0)
+                    throw new Exception($"Expected sectionY=0, got {results[0].sectionY}");
+            }
+            finally
+            {
+                foreach (var (_, m) in results) m.QuadBuffer?.Dispose();
+            }
+        });
+
+        /// <summary>
+        /// Explicit section list: mesh only sy=3 even when other sections have blocks.
+        /// </summary>
+        [TestMethod]
+        public async Task MeshChunkColumn_SectionList_OnlyMeshesListed() => await RunTest(async accelerator =>
+        {
+            var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
+                (x, y, z) => (y < 4 || y >= 12) ? (byte)1 : (byte)0);
+
+            using var pipeline = new VoxelMeshPipeline(accelerator);
+            var results = await pipeline.MeshChunkColumnSectionsAsync(
+                blocks, new[] { 3 },
+                null, null, null, null,
+                TestSectionSize, TestTotalHeight);
+
+            try
+            {
+                if (results.Count != 1 || results[0].sectionY != 3)
+                    throw new Exception($"Expected only sy=3, got count={results.Count} sy={results.FirstOrDefault().sectionY}");
+            }
+            finally
+            {
+                foreach (var (_, m) in results) m.QuadBuffer?.Dispose();
+            }
+        });
+
+        /// <summary>
+        /// Two consecutive MeshChunkColumnAsync calls must reuse staging (no throw) and
+        /// produce the same section count - guards the dig remesh reuse path.
+        /// </summary>
+        [TestMethod]
+        public async Task MeshChunkColumn_SecondCall_ReusesStaging() => await RunTest(async accelerator =>
+        {
+            var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
+                (x, y, z) => (y >= 4 && y < 8) ? (byte)1 : (byte)0);
+
+            using var pipeline = new VoxelMeshPipeline(accelerator);
+            var a = await pipeline.MeshChunkColumnAsync(
+                blocks, null, null, null, null, TestSectionSize, TestTotalHeight);
+            var b = await pipeline.MeshChunkColumnAsync(
+                blocks, null, null, null, null, TestSectionSize, TestTotalHeight);
+            try
+            {
+                if (a.Count != b.Count || a.Count != 1)
+                    throw new Exception($"Expected matching single-section remeshes, got {a.Count} then {b.Count}");
+                if (a[0].mesh.QuadCount != b[0].mesh.QuadCount)
+                    throw new Exception($"QuadCount drifted across remesh: {a[0].mesh.QuadCount} vs {b[0].mesh.QuadCount}");
+            }
+            finally
+            {
+                foreach (var (_, m) in a) m.QuadBuffer?.Dispose();
+                foreach (var (_, m) in b) m.QuadBuffer?.Dispose();
+            }
+        });
+
+        /// <summary>
+        /// DestroyInSphereBytes zeroes the sphere; FillInSphereBytes only writes air cells.
+        /// </summary>
+        [TestMethod]
+        public async Task ExplosionKernels_ByteColumn_DestroyAndFill_MatchCounts() => await RunTest(async accelerator =>
+        {
+            _ = accelerator; // CPU-only oracle; accelerator required by RunTest harness
+            int ss = 8, h = 16;
+            var blocks = new byte[ss * ss * h];
+            for (int i = 0; i < blocks.Length; i++) blocks[i] = 1;
+
+            int destroyed = ExplosionKernels.DestroyInSphereBytes(
+                blocks, ss, h, 4f, 8f, 4f, 2f);
+            if (destroyed <= 0)
+                throw new Exception("Expected DestroyInSphereBytes to remove blocks");
+
+            int stillSolid = 0;
+            for (int i = 0; i < blocks.Length; i++) if (blocks[i] != 0) stillSolid++;
+            if (stillSolid + destroyed != ss * ss * h)
+                throw new Exception($"Destroy tally mismatch: solid={stillSolid} destroyed={destroyed}");
+
+            int filled = ExplosionKernels.FillInSphereBytes(
+                blocks, ss, h, 4f, 8f, 4f, 2f, 3);
+            if (filled != destroyed)
+                throw new Exception($"Fill should restore destroyed cells: filled={filled} destroyed={destroyed}");
+        });
+
+        /// <summary>
+        /// CollectAffectedSections marks the section containing the center and neighbors within radius.
+        /// </summary>
+        [TestMethod]
+        public async Task ExplosionKernels_CollectAffectedSections_IncludesCenter() => await RunTest(async accelerator =>
+        {
+            _ = accelerator;
+            var set = new HashSet<SectionCoord>();
+            ExplosionKernels.CollectAffectedSections(8.5f, 24.5f, 8.5f, 2f, 16, set);
+            if (!set.Contains(new SectionCoord(0, 1, 0)))
+                throw new Exception("Expected section (0,1,0) for center at y=24.5 with ss=16");
+            if (set.Count < 1)
+                throw new Exception("Expected at least one affected section");
+        });
+        /// <summary>
+        /// GPU BlockColumnCarveService destroy matches CPU DestroyInSphereBytes count.
+        /// </summary>
+        [TestMethod]
+        public async Task BlockColumnCarve_DestroySphere_MatchesCpuOracle() => await RunTest(async accelerator =>
+        {
+            // WebGL lacks reliable atomics for DestroyKernel counter + in-place writes.
+            if (accelerator.AcceleratorType.ToString().Contains("OpenGL", StringComparison.OrdinalIgnoreCase)
+                || accelerator.GetType().Name.Contains("WebGL", StringComparison.OrdinalIgnoreCase))
+                throw new UnsupportedTestException("BlockColumnCarve requires Atomic.Add; WebGL only has partial support.");
+
+            int ss = 8, h = 16;
+            var cpu = new byte[ss * ss * h];
+            var gpu = new byte[ss * ss * h];
+            for (int i = 0; i < cpu.Length; i++) { cpu[i] = 1; gpu[i] = 1; }
+
+            int cpuDestroyed = ExplosionKernels.DestroyInSphereBytes(cpu, ss, h, 4f, 8f, 4f, 2.5f);
+
+            using var carve = new BlockColumnCarveService(accelerator);
+            int gpuDestroyed = await carve.DestroySphereAsync(gpu, ss, h, 4f, 8f, 4f, 2.5f);
+
+            if (gpuDestroyed != cpuDestroyed)
+                throw new Exception($"GPU destroyed {gpuDestroyed} != CPU {cpuDestroyed}");
+            for (int i = 0; i < cpu.Length; i++)
+                if (cpu[i] != gpu[i])
+                    throw new Exception($"Mismatch at {i}: cpu={cpu[i]} gpu={gpu[i]}");
         });
     }
 }
