@@ -78,7 +78,15 @@ No other external dependencies.
 
 ### Testing
 
-- PlaywrightMultiTest runs desktop + browser tests from one `dotnet test`
+- PlaywrightMultiTest runs desktop + browser tests from one `dotnet test`. The harness is ported from
+  SpawnDev.ILGPU's (2026-09-23): parallel backend lanes, INSTALLED Chrome by default (Playwright's bundled
+  Chromium only exposes the SwiftShader SOFTWARE WebGPU adapter - every browser GPU number from the old
+  harness was CPU time). Scope runs with environment variables, NOT `dotnet test --filter` (the scheduler
+  runs everything before NUnit filters what it reports):
+  - `PMT_FILTER=a,b` - comma-separated substrings of test name / class / method
+  - `PMT_LANES=WebGPU,Cuda` - only these backend lanes (substring of the test class)
+  - `PMT_BROWSER_CHANNEL=bundled` - deliberately use the bundled Chromium
+  - `PMT_CONSOLE_LOG=<substring>|1` - keep browser console lines a test prints
 - Test real production kernels with real data on all backends
 - GPU-side verification via GpuTestVerify (no large CPU readbacks)
 - No mock tests. No fake tests. Every test proves production code works.
