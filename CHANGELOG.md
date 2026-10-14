@@ -1,5 +1,19 @@
 # SpawnDev.VoxelEngine Changelog
 
+## 0.2.0-local.3 (2026-10-14, local feed only, not released) - HeightmapMesher (the far tier)
+
+- **`HeightmapMesher`**: a chunk's heightmap (top block per column, plus the seabed under water) meshed on the GPU into
+  `PackedQuad`s per 16-high section - the same `ColumnMesh` result, so a far chunk is drawn exactly like a meshed column, by section
+  origin. One thread per column: a top face, plus a wall over the blocks above each neighbour's solid top (split at section borders);
+  water gets a water-pass top face and its seabed becomes a solid column of type + `SeabedTypeOffset` (so a viewer can darken what
+  lies under water). Plants, air and unknown types draw nothing. The heightmap goes in as a GPU buffer (`HeightmapLayout`, 3072 bytes,
+  from a JS typed array with `CreateHeightmapBufferFromJS`: no .NET copy); the four neighbouring chunks' heightmaps are optional and
+  decide the border walls (a missing neighbour is bottomless: the wall reaches the world floor). One counter readback per chunk.
+- Tests (10, WebGPU + CPU lanes): the GPU quads expanded to unit faces must equal a plain-rules CPU reference exactly: flat chunk with
+  and without neighbours, terrain with lakes/plants/air holes for every neighbour combination, shore walls reaching the seabed,
+  a worst-case checkerboard through every section (the scratch bound), reuse after a busy chunk, wrong-size rejection, JS upload,
+  a type emitting both passes is solid. 21 single mutations, all killed.
+
 ## 0.2.0-local.2 (2026-10-14, local feed only, not released) - ReleaseQuadBuffer
 
 - **`BlockRenderPipeline.ReleaseQuadBuffer(GPUBuffer)`**: drops one quad buffer's cached bind group. A viewer re-meshes and evicts
