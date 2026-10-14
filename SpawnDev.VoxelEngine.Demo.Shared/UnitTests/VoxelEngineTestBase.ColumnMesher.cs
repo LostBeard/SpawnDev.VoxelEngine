@@ -24,7 +24,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             BlockClass.Water,   // water
             BlockClass.Cross,   // plant
             BlockClass.Cutout,  // glass
+            BlockClass.EmitOpaque | BlockClass.OccludeOpaque | BlockClass.EmitWater | BlockClass.OccludeWater, // a custom class drawn in both passes
         };
+        private const ushort CmBoth = 8;
 
         private const int CmXZ = 16;
 

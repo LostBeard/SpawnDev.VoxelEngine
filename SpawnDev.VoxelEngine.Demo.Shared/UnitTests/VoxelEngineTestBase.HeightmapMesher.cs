@@ -227,6 +227,19 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         });
 
         [TestMethod]
+        public async Task HeightmapMesher_ATypeThatEmitsBothPasses_IsSolidNotWaterTest() => await RunTest(async accelerator =>
+        {
+            using var mesher = HmMesher(accelerator);
+            var m = HmFlat(30, CmBoth);
+            await HmMeshAndVerify(accelerator, mesher, m, new HmMap?[4], "both-pass type");
+            using var gpu = HmUpload(accelerator, m);
+            using var mesh = await mesher.MeshAsync(gpu);
+            // water means "emits only in the water pass"; this type emits opaque too, so it is a solid column: no water faces at all
+            if (mesh.Water.Count != 0) throw new Exception($"A type that emits in the opaque pass is solid; got {mesh.Water.Count} water quads");
+            if (mesh.Opaque.Count < 256) throw new Exception($"Expected its 256 top faces in the opaque pass, got {mesh.Opaque.Count}");
+        });
+
+        [TestMethod]
         public async Task HeightmapMesher_CheckerboardAcrossSections_NeverOverflowsTheScratchTest() => await RunTest(async accelerator =>
         {
             using var mesher = HmMesher(accelerator);
