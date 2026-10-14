@@ -25,6 +25,24 @@ per block). `VertexPullPipeline` draws flat colours only, so the renderer a Mine
 - Every cube face is wound counter-clockwise from outside and shows its texture upright and unmirrored from outside; a test with a
   four-coloured-quadrant texture checks all six.
 
+- **`ColumnMesher`: a whole block column meshed on the GPU, class-aware, all sections per dispatch.** `VoxelMeshPipeline` meshes one
+  16^3 section per call (CPU padding, a counter readback each); a Minecraft column is 24 sections. `ColumnMeshKernels` are the
+  batched form of the same bit-column face culling and greedy merge (occupancy -> face cull -> merge +X-X+Z-Z, then +Y-Y -> plants ->
+  compaction), each a flat Index1D covering every section at once, so a column is a handful of dispatches and ONE tiny readback (the
+  75 counters that size the output). The four neighbouring columns' edge cells sit in a ring around each section, so culling is exact
+  across column borders; a missing neighbour counts as solid (no faces toward an unloaded column) or open (`MissingNeighborsAreSolid`).
+- **`BlockClass`**: per-type flags (emit / occlude per pass, plant). A face is drawn where a block emits and its neighbour does not
+  occlude: leaves and glass emit but do not occlude, water has a pass of its own, plants are two crossed-plane quads (faces 6, 7).
+  Output: `ColumnMesh` = opaque / plants / water `QuadList`s, exact-size GPU buffers with per-section start offsets. Scratch is
+  4096 cells x 6 faces = 24576 quads per section, a proven bound; nothing is silently dropped (`Overflow` is reported, must be 0).
+- **`ColumnMesher.CreateColumnBufferFromJS`**: a column from a JS `Uint8Array` straight to the GPU buffer (`CopyFromJS`), never through
+  the .NET heap.
+- Tests (12): the GPU mesh is expanded back to unit faces and must equal a brute-force CPU reference exactly (each face covered once,
+  same type): single block, a slab that merges to the minimum, class rules one by one, neighbour columns, noise columns x neighbour
+  variants, 24-section terrain columns, the 3D-checkerboard worst case (exactly the scratch bound), reuse after a busy column, wrong-size
+  rejection, JS typed-array upload. WebGPU lane 12/12, CPU lane 11/11. Mutation-checked one at a time (16 mutations: 15 killed, 1
+  equivalent - the merge consumes every mask bit, so stale masks cannot exist).
+
 Dependencies aligned with the consumers: `SpawnDev.ILGPU` 5.3.7 (was 5.2.16), `SpawnDev.SpawnJS.Blazor` 3.0.4 (was 2.1.18). The
 27 existing WebGPU render tests pass on them.
 
