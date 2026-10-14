@@ -1,5 +1,41 @@
 # SpawnDev.VoxelEngine Changelog
 
+## 0.2.0-local.1 (2026-10-14, local feed only, not released) - Textured block rendering
+
+AubsCraft's 3D viewer is moving onto this library (its own mesh kernels read every mesh back to .NET and draw one flat colour
+per block). `VertexPullPipeline` draws flat colours only, so the renderer a Minecraft-style game needs lives here now:
+
+- **`BlockRenderPipeline`**: textured, tinted, lit, fogged blocks from `PackedQuad` buffers, in three passes: `Opaque` (cull back
+  faces), `Cross` (plants: two crossed planes per block, double-sided) and `Water` (alpha blended, depth test, NO depth write).
+  Alpha cutout (leaf gaps, plant outlines); per-face brightness steps; sun + ambient + a fixed cool fill light; start/end fog
+  with a quadratic blend. The caller owns the lighting model (`BlockFrameUniforms`: camera, sun, ambient, fog) - a day/night
+  cycle or a dungeon is the caller's choice. Reversed-Z depth.
+- **Texture ARRAY with a repeating sampler, not an atlas**: a greedy-merged w x h quad tiles its texture once per block, which an
+  atlas cannot do. `BlockTextureArray.FromAtlas` slices an RGBA atlas into layers ON THE GPU (one upload, then
+  copyTextureToTexture per tile; layer = row * tilesX + column); the pixels stay in the JS typed array (a `byte[]` overload exists
+  for tests and tools).
+- **`BlockMaterial`** (32 bytes per block type, a storage buffer): a texture layer for each of the six faces, a tint, an alpha for
+  the water pass, flags (`FlagTinted`, `FlagLowerTop` = a water surface 0.1 below the block top, `FlagFlatShading`). A face with
+  `NoTexture` is drawn in the tint colour; a block type nobody registered is untextured magenta.
+- **Section placement through the instance index**: `Draw(pass, firstQuad, quadCount, sectionIndex)` draws with
+  `firstInstance = sectionIndex`; the vertex shader reads that section's origin from a storage buffer. One quad buffer holds many
+  sections and drawing one writes no uniform. (A direct draw needs no extra WebGPU feature for firstInstance.)
+- **Plants** are two extra quad "faces" in the same 8-byte `PackedQuad` (`BlockRenderShaders.FaceCrossA/B` = 6 and 7): two
+  crossed planes cost 16 bytes instead of 48 vertices.
+- Every cube face is wound counter-clockwise from outside and shows its texture upright and unmirrored from outside; a test with a
+  four-coloured-quadrant texture checks all six.
+
+Dependencies aligned with the consumers: `SpawnDev.ILGPU` 5.3.7 (was 5.2.16), `SpawnDev.SpawnJS.Blazor` 3.0.4 (was 2.1.18). The
+27 existing WebGPU render tests pass on them.
+
+### Tests (WebGPU lane, real device, pixel readback; 18 incl. the struct-size and atlas-validation ones)
+Orientation of all six faces, tiling across a merged quad, alpha cutout, water blend and no-depth-write, the lowered water top (the
+surface edge is PROJECTED and compared with the first lit screen row), double-sided plants from four sides, section origins, tint /
+flat colour / untextured / unregistered-type magenta, quadratic fog, sun + ambient lighting, reversed-Z ordering, atlas layer
+mapping. Red-checked with twelve mutations (mirrored +X UV, clamp instead of repeat, no discard, water writing depth, lowered top
+ignored, plants culled, section origin ignored, linear fog, tint ignored, column-major atlas slicing, wrong water blend factor, sun
+ignoring N.L): exactly the twelve aimed tests failed and the four unaffected ones passed.
+
 ## 0.1.0-rc.3 (2026-09-20) - Port BlazorJS to SpawnJS
 
 - **Replace `SpawnDev.BlazorJS` 3.5.6 with `SpawnDev.SpawnJS.Blazor` 2.1.18** (brings `SpawnDev.SpawnJS` 2.1.17).

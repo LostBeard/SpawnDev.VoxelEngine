@@ -20,6 +20,11 @@ Write voxel engine code in C# and let SpawnDev.ILGPU handle the GPU backend. In 
 - **Reversed-Z depth** - Zero Z-fighting at any distance with infinite far plane.
 - **Face masking** - 6 orientation groups per chunk mesh. Skip back-facing groups at draw time for 36% reduction.
 
+### Textured Blocks
+- **`BlockRenderPipeline`** - textured, tinted, lit, fogged blocks from `PackedQuad` buffers (the Minecraft-style look): opaque, plant (crossed planes, double-sided) and water (alpha blended) passes, alpha cutout, per-face brightness, sun + ambient + fog supplied by the caller, reversed-Z.
+- **Texture array, not atlas** - a greedy-merged quad tiles its texture once per block, so the textures are a repeating `texture_2d_array`. `BlockTextureArray.FromAtlas` slices an RGBA atlas into layers on the GPU, and `BlockMaterial` maps each block type's six faces to layers.
+- **Section placement by instance index** - one quad buffer holds many sections; a draw's `firstInstance` selects the section origin, so drawing a section writes no uniform.
+
 ### Beyond Meshing
 - **Terrain carving** - `TerrainCarveService` with sphere/box/cylinder add/remove modes and `ITerrainCarve` interface. NMS-style sphere terraform shipped in Lost Spawns.
 - **Voxel physics** - `VoxelRaycast.CastWorld` (DDA traversal returning `RaycastHit` with face + adjacent cell), `VoxelCollision` AABB-vs-world, `VoxelSphereQuery`, and `StructuralIntegrity` for cave-in / floating-block detection.
