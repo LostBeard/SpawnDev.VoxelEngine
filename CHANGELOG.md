@@ -1,5 +1,12 @@
 # SpawnDev.VoxelEngine Changelog
 
+## 0.2.0-local.2 (2026-10-14, local feed only, not released) - ReleaseQuadBuffer
+
+- **`BlockRenderPipeline.ReleaseQuadBuffer(GPUBuffer)`**: drops one quad buffer's cached bind group. A viewer re-meshes and evicts
+  columns all the time, and the cache otherwise keeps a bind group for every buffer ever drawn. `CachedQuadBindGroups` reports the
+  count. Test: bind -> 1, release + destroy -> 0, a later buffer draws and counts 1, releasing an unbound or already released
+  buffer is harmless; the no-op mutation is killed by it.
+
 ## 0.2.0-local.1 (2026-10-14, local feed only, not released) - Textured block rendering
 
 AubsCraft's 3D viewer is moving onto this library (its own mesh kernels read every mesh back to .NET and draw one flat colour

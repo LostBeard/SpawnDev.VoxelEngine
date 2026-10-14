@@ -506,6 +506,71 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             BrExpect(pixels, 64, 48, 32, 0, 255, 255, "layer 1 is the cyan tile (column 1, row 0)");
         });
 
+        // =====================================================================
+        // Quad buffers that come and go (a viewer re-meshes and evicts columns all the time)
+        // =====================================================================
+
+        [TestMethod]
+        public async Task BlockRender_ReleaseQuadBuffer_ForgetsOneBindGroup_AndALaterBufferStillDrawsTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            var materials = new BlockMaterial[2];
+            materials[1] = BlockMaterial.Uniform(BrLayerCyan);
+            var eye = new Vector3(0.5f, 1.5f, 0.5f);
+            var frame = BrNeutral(BrView(eye, new Vector3(0.5f, 1f, 0.5f), -Vector3.UnitZ) * BrProj90, eye);
+
+            using var textures = BlockTextureArray.FromAtlas(device, queue, BrAtlas(), 32, 32, BrTile);
+            using var pipeline = new BlockRenderPipeline();
+            pipeline.Init(device, queue, "bgra8unorm", maxSections: 16);
+            pipeline.SetTextures(textures);
+            pipeline.SetMaterials(materials);
+            pipeline.SetSectionOrigin(0, Vector3.Zero);
+
+            async Task<byte[]> DrawOnce(GPUBuffer buffer)
+            {
+                pipeline.BeginFrame(frame);
+                var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 64, 64);
+                try
+                {
+                    using var encoder = device.CreateCommandEncoder();
+                    using var pass = pipeline.BeginRenderPass(encoder, colorView, depthView, Vector3.Zero);
+                    pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, buffer);
+                    pipeline.Draw(pass, 0, 1, 0);
+                    pass.End();
+                    using var cmd = encoder.Finish();
+                    queue.Submit(new[] { cmd });
+                    await queue.OnSubmittedWorkDone();
+                    return await ReadBackPixels(device, queue, colorTex, 64, 64);
+                }
+                finally { DisposeTargets(colorTex, depthTex, colorView, depthView); }
+            }
+
+            var quads = new[] { PackedQuad.Pack(0, 0, 0, 1, 1, 4, 1) };
+            float f = 255f * BrFaceFactor(4);
+
+            var a = CreateQuadBuffer(device, queue, quads);
+            BrExpect(await DrawOnce(a), 64, 32, 32, 0, f, f, "first buffer draws");
+            if (pipeline.CachedQuadBindGroups != 1) throw new Exception($"One bound buffer must have one cached bind group, got {pipeline.CachedQuadBindGroups}");
+
+            pipeline.ReleaseQuadBuffer(a);
+            a.Destroy(); a.Dispose();
+            if (pipeline.CachedQuadBindGroups != 0) throw new Exception($"ReleaseQuadBuffer must drop the buffer's bind group, {pipeline.CachedQuadBindGroups} remain");
+
+            var b = CreateQuadBuffer(device, queue, quads);
+            try
+            {
+                BrExpect(await DrawOnce(b), 64, 32, 32, 0, f, f, "a buffer made after the release draws");
+                if (pipeline.CachedQuadBindGroups != 1) throw new Exception($"Expected 1 cached bind group again, got {pipeline.CachedQuadBindGroups}");
+
+                // Releasing a buffer that was never bound, or one already released, is harmless and does not touch the others
+                var never = CreateQuadBuffer(device, queue, quads);
+                pipeline.ReleaseQuadBuffer(never);
+                pipeline.ReleaseQuadBuffer(never);
+                never.Destroy(); never.Dispose();
+                if (pipeline.CachedQuadBindGroups != 1) throw new Exception($"Releasing an unbound buffer changed the cache: {pipeline.CachedQuadBindGroups}");
+            }
+            finally { b.Destroy(); b.Dispose(); }
+        });
+
         [TestMethod]
         public void BlockRender_TextureArrayFromAtlas_RejectsAnAtlasThatIsNotWholeTilesTest()
         {

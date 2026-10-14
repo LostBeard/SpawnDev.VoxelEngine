@@ -39,6 +39,8 @@ namespace SpawnDev.VoxelEngine.Rendering
         private int _maxSections;
 
         public bool IsReady => _opaque != null;
+        /// <summary>How many quad buffers have a cached bind group (grows with each buffer bound, shrinks with <see cref="ReleaseQuadBuffer"/>).</summary>
+        public int CachedQuadBindGroups => _quadBindGroups.Count;
         public int MaxSections => _maxSections;
 
         /// <param name="colorFormat">The colour target's format (the canvas format, or "bgra8unorm" for an offscreen target).</param>
@@ -274,6 +276,15 @@ namespace SpawnDev.VoxelEngine.Rendering
             });
             _quadBindGroups[quadBuffer] = group;
             return group;
+        }
+
+        /// <summary>
+        /// Forget one quad buffer's cached bind group: call when that buffer is about to be destroyed (a section re-meshed, a column
+        /// evicted). Without it the cache keeps a bind group per buffer ever drawn. Harmless for a buffer never bound.
+        /// </summary>
+        public void ReleaseQuadBuffer(GPUBuffer quadBuffer)
+        {
+            if (_quadBindGroups.Remove(quadBuffer, out var group)) group.Dispose();
         }
 
         /// <summary>Forget the cached bind groups of quad buffers: call when a buffer was destroyed or replaced.</summary>
