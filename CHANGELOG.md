@@ -7,6 +7,7 @@
   height from its floor, tops and sides, the sides showing the top strip of their texture rather than the whole tile squeezed. Pair it with a class that hides nothing
   (`BlockClass.Cutout`) so what is beside and below still shows. Test: the middle of a 4/16 block is empty, just above its floor is solid, the side shows the tile's top rows;
   three mutations (no squash, no side-strip UV) caught.
+- **Water is drawn from both sides** (the water pass no longer culls back faces): a swimmer sees the underside of the surface. Test: a water face from in front and from behind; mutation caught.
 - **`BlockMaterial.Slope(direction)`** (flag bits 13..15, `SlopeEast/West/South/North`): a thin block sheared into a ramp whose far end is a block higher - a sloping rail. Ramps side by side
   merge across the slope, never along it (the next block of a ramp is a layer up), so every quad is one block long. Test: level block vs ramps rising each way at both ends; 3 mutations caught.
 - **`BlockMaterial.FlagPlantFromBottom`**: a plant's crossed planes take face 5's tile and tint instead of face 0's, so a block can be water on faces 0..4 and a plant on face 5 -

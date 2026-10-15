@@ -109,7 +109,8 @@ namespace SpawnDev.VoxelEngine.Rendering
             using var shader = device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = BlockRenderShaders.Source });
             _opaque = CreatePipeline(shader, "fs_main", colorFormat, GPUCullMode.Back, blend: false, depthWrite: true);
             _cross = CreatePipeline(shader, "fs_main", colorFormat, GPUCullMode.None, blend: false, depthWrite: true);
-            _water = CreatePipeline(shader, "fs_water", colorFormat, GPUCullMode.Back, blend: true, depthWrite: false);
+            // Water is seen from both sides: from below, a swimmer looks up at the underside of the surface
+            _water = CreatePipeline(shader, "fs_water", colorFormat, GPUCullMode.None, blend: true, depthWrite: false);
 
             // A valid texture binding before any real textures are set
             _ownedPlaceholder = BlockTextureAtlas.White(device, queue);

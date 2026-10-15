@@ -160,7 +160,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         }
 
         /// <summary>One quad (face code) of block type 1 over an atlas of the given tile colours (16 px tiles, one row); the pixel at (px, py) of a 64 px image seen from the front (or above for face 4).</summary>
-        private static async Task<(byte r, byte g, byte b)> BaRenderPixel(GPUDevice device, GPUQueue queue, byte[] atlas, int tiles, BlockMaterial material, int face, int px, int py, int cellX = 0, int cellZ = 0)
+        private static async Task<(byte r, byte g, byte b)> BaRenderPixel(GPUDevice device, GPUQueue queue, byte[] atlas, int tiles, BlockMaterial material, int face, int px, int py, int cellX = 0, int cellZ = 0, BlockRenderPipeline.Pass? passOverride = null, bool fromBehind = false)
         {
             using var textures = BlockTextureAtlas.FromRgba(device, queue, atlas, 16 * tiles, 16, 16);
             using var pipeline = new BlockRenderPipeline();
@@ -170,7 +170,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var shift = new Vector3(cellX, 0, cellZ);
             var (eye, target, up) = face == 4
                 ? (new Vector3(0.5f, 3f, 0.5f) + shift, new Vector3(0.5f, 0f, 0.5f) + shift, -Vector3.UnitZ)
-                : (new Vector3(0.5f, 0.5f, 3f) + shift, new Vector3(0.5f, 0.5f, 0f) + shift, Vector3.UnitY);
+                : fromBehind
+                    ? (new Vector3(0.5f, 0.5f, -2f) + shift, new Vector3(0.5f, 0.5f, 1f) + shift, Vector3.UnitY)
+                    : (new Vector3(0.5f, 0.5f, 3f) + shift, new Vector3(0.5f, 0.5f, 0f) + shift, Vector3.UnitY);
             var frame = BrNeutral(BrView(eye, target, up) * BrProj90, eye);
             pipeline.BeginFrame(frame);
             var buffer = CreateQuadBuffer(device, queue, new[] { PackedQuad.Pack(cellX, 0, cellZ, 1, 1, face, 1) });
@@ -180,7 +182,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 using var encoder = device.CreateCommandEncoder();
                 using (var pass = pipeline.BeginRenderPass(encoder, colorView, depthView, Vector3.Zero))
                 {
-                    pipeline.BindPass(pass, face >= 6 ? BlockRenderPipeline.Pass.Cross : BlockRenderPipeline.Pass.Opaque, buffer);
+                    pipeline.BindPass(pass, passOverride ?? (face >= 6 ? BlockRenderPipeline.Pass.Cross : BlockRenderPipeline.Pass.Opaque), buffer);
                     pipeline.Draw(pass, 0, 1, 0);
                     pass.End();
                 }
@@ -357,6 +359,18 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 if (highest < stoneTop - 3) throw new Exception($"the ramp reaches row {highest}, above the stone block with its rail (row {stoneTop}): it rises more than one block");
             }
             finally { DisposeTargets(colorTex, depthTex, colorView, depthView); }
+        });
+
+        [TestMethod]
+        public async Task BlockRender_Water_IsSeenFromBothSides_ASwimmerSeesTheUndersideOfTheSurfaceTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            var atlas = BaSolidAtlas(16, 1, 1, _ => (255, 255, 255, 255));
+            var water = BlockMaterial.Uniform(0, flags: BlockMaterial.FlagFlatShading, alpha: 1f);
+            // The +Z face of a water block, from in front (outside) and from behind (inside the water): both show it
+            var front = await BaRenderPixel(device, queue, atlas, 1, water, 2, 32, 32, passOverride: BlockRenderPipeline.Pass.Water);
+            var behind = await BaRenderPixel(device, queue, atlas, 1, water, 2, 32, 32, passOverride: BlockRenderPipeline.Pass.Water, fromBehind: true);
+            if (front.r + front.g + front.b < 60) throw new Exception("the front of a water face must be drawn");
+            if (behind.r + behind.g + behind.b < 60) throw new Exception("the back of a water face must be drawn too: from below the surface a swimmer sees it");
         });
 
         [TestMethod]
