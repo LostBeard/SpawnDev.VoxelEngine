@@ -216,6 +216,25 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         });
 
         [TestMethod]
+        public async Task BlockRender_ARamp_RisesAlongItsSlope_AndIsLevelWithoutOneTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            // Seen from the front (+Z side, 2 blocks from the camera) at 16 px a block: y 0 at row 40, y 1 at row 24, x 0.5 at column 32. A 4/16-thick block rising toward +X is at
+            // x 0.9 (column 38) 0.9..1.15 high (rows 22-26) and at x 0.1 (column 26) 0.1..0.35 (rows 34-38). Level, it fills only rows 36-40.
+            var atlas = BaSolidAtlas(16, 1, 1, _ => (255, 255, 255, 255));
+            var level = BlockMaterial.Uniform(0, flags: BlockMaterial.Thickness(4));
+            var east = BlockMaterial.Uniform(0, flags: BlockMaterial.Thickness(4) | BlockMaterial.Slope(BlockMaterial.SlopeEast));
+            var west = BlockMaterial.Uniform(0, flags: BlockMaterial.Thickness(4) | BlockMaterial.Slope(BlockMaterial.SlopeWest));
+            async Task<bool> Filled(BlockMaterial m, int col, int row) { var p = await BaRenderPixel(device, queue, atlas, 1, m, 2, col, row); return p.r + p.g + p.b > 60; }
+            if (!await Filled(level, 26, 38) || !await Filled(level, 38, 38)) throw new Exception("a level 4/16 block fills row 38 at both ends");
+            if (await Filled(level, 38, 24) || await Filled(level, 26, 24)) throw new Exception("a level 4/16 block must not reach row 24");
+            if (!await Filled(east, 38, 24)) throw new Exception("the high end of a ramp rising toward +X must reach row 24 at column 38");
+            if (await Filled(east, 26, 24)) throw new Exception("the low end of a ramp rising toward +X must not reach row 24");
+            if (await Filled(east, 38, 38)) throw new Exception("a ramp has left the floor at its high end");
+            if (!await Filled(east, 26, 36)) throw new Exception("the low end of a ramp is on the floor");
+            if (!await Filled(west, 26, 24) || await Filled(west, 38, 24)) throw new Exception("a ramp rising toward -X is high at its -X end");
+        });
+
+        [TestMethod]
         public async Task BlockRender_PlantFromBottom_TakesItsTextureFromFaceFive_WhileTheCubeFacesKeepTheirOwnTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
         {
             // Tile 0 green (the water, in a real block), tile 1 red (the plant)

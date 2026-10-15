@@ -53,6 +53,22 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// </summary>
         public static uint Thickness(int sixteenths) => sixteenths is <= 0 or >= 16 ? 0u : (uint)sixteenths << ThicknessShift;
 
+        private const int SlopeShift = 13;
+        /// <summary>The thin block rises along +X (it is a ramp: its low end at -X, its high end one block up at +X).</summary>
+        public const int SlopeEast = 1;
+        /// <summary>Rises toward -X.</summary>
+        public const int SlopeWest = 2;
+        /// <summary>Rises toward +Z.</summary>
+        public const int SlopeSouth = 3;
+        /// <summary>Rises toward -Z.</summary>
+        public const int SlopeNorth = 4;
+
+        /// <summary>
+        /// The block is a RAMP: the whole thin block is sheared so its far end is a block higher (a sloping rail). Sections of a ramp that lie side by side merge across the slope,
+        /// never along it (the next block of a ramp is a layer higher), so each quad is one block along the slope. 0 = level. OR the result into <see cref="Flags"/>; pair with <see cref="Thickness"/>.
+        /// </summary>
+        public static uint Slope(int direction) => direction is < 1 or > 4 ? 0u : (uint)direction << SlopeShift;
+
         /// <summary>
         /// The tint multiplies only the faces named by <paramref name="faceMask"/> (bit f = face f: 0 +X, 1 -X, 2 +Z, 3 -Z, 4 +Y, 5 -Y): the top of a
         /// grass block takes the biome's colour and its sides do not. OR the result into <see cref="Flags"/>. <see cref="FlagTinted"/> tints them all.

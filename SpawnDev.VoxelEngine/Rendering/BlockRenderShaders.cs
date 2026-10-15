@@ -173,6 +173,16 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
         local.y = floorY + (local.y - floorY) * t;
         if (face < 4u) { uv.y = uv.y * t; }
     }
+    // A ramp (a sloping rail): sheared so the far end of its cell is a block higher
+    let slope = (m.flags >> 13u) & 7u;
+    if (slope != 0u && face < 6u) {
+        var along = 0.0;
+        if (slope == 1u) { along = local.x - qx; }
+        else if (slope == 2u) { along = 1.0 - (local.x - qx); }
+        else if (slope == 3u) { along = local.z - qz; }
+        else { along = 1.0 - (local.z - qz); }
+        local.y = local.y + clamp(along, 0.0, 1.0);
+    }
     if (face == 4u && (m.flags & FLAG_LOWER_TOP) != 0u) {
         local.y = local.y - 0.1; // a water surface sits a tenth below the block's top
     }
