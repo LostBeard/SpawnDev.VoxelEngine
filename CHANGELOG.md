@@ -1,5 +1,29 @@
 # SpawnDev.VoxelEngine Changelog
 
+## Unreleased (0.2.0-rc.2) - quad buffers shared by many meshes
+
+AubsCraft on an Intel UHD 620 laptop: 837 draws AND 837 buffer binds a frame (one quad buffer per column and pass), 17.6 ms of the 19.1 ms
+frame spent recording them. After `EmbedSectionIndex` removed the per-section draws, the per-mesh buffer was the remaining multiplier.
+
+### Added
+- **`QuadArena`**: a few large GPU buffers (blocks of 2 Mi quads = 16 MiB by default) that hold the quad lists of many meshes.
+  `ColumnMesher.Arena` / `HeightmapMesher.Arena`: the compact pass writes each list straight to its place in a block (no extra copy, no
+  buffer created per mesh), and `Draw(pass, list.FirstQuad, list.Count, slot)` draws it. Hundreds of columns share one buffer, so a pass
+  binds once instead of once per column. A block is added when nothing fits (a list longer than a block gets a block of its own);
+  disposing a mesh gives its ranges back, a second Dispose is harmless. Null (the default): each list keeps its own buffer, nothing changes.
+- **`ColumnMesh.QuadList`**: `FirstQuad`, `IsPooled`, `ArenaBlock`, and `CopyToHostAsync()` (exactly the list's quads, pooled or not).
+- **`RangeAllocator`** (`Buffers/`): the best-fit range allocator with merging behind the arena; pure bookkeeping.
+- Tests (CPU, Wasm and WebGPU lanes): the allocator against a brute-force model (20k random allocate/free steps, no overlap, totals),
+  best-fit vs first-fit, double free, merge; pooled meshes hold exactly the quads of unpooled ones (as a set: the merge appends with
+  atomics, so the order differs between meshings), match the CPU reference across several tiny blocks and after frees, oversize lists,
+  the heightmap mesher; and a WebGPU pixel test: two different columns in one block, each drawn from its own range at its own origin.
+  Eight mutations of the allocator and the arena were each caught by at least one test.
+
+### Notes
+- Dispose the arena only after the accelerator has finished the last mesh (`await accelerator.SynchronizeAsync()`): `MeshAsync` flushes its
+  compaction without waiting for it, and the Wasm backend frees a disposed buffer at once (a stale dispatch then writes into whatever
+  was allocated there next; the A/B that showed it changed only that one line of a test).
+
 ## 0.2.0-rc.1 (2026-10-15) - AubsCraft's viewer release: textured block rendering, GPU column and heightmap meshers, fewer calls per frame
 
 The four local builds below (0.2.0-local.1 to local.4) are this release; AubsCraft's 3D viewer has run on them in production since 2026-10-14.

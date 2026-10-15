@@ -35,12 +35,28 @@ namespace SpawnDev.VoxelEngine.Meshing
             Water.Dispose();
         }
 
-        /// <summary>One pass's quads: <see cref="Buffer"/> holds <see cref="Count"/> quads, section s's at [SectionStart[s], SectionStart[s + 1]).</summary>
+        /// <summary>
+        /// One pass's quads: <see cref="Count"/> quads from quad <see cref="FirstQuad"/> of <see cref="Buffer"/>, section s's at
+        /// [SectionStart[s], SectionStart[s + 1]) counted from the list's first quad.
+        /// </summary>
         public sealed class QuadList : IDisposable
         {
-            /// <summary>Null when the list is empty.</summary>
+            private readonly QuadArena? _arena;
+            private readonly QuadRange _range;
+            private bool _disposed;
+
+            /// <summary>
+            /// Null when the list is empty. The list's own buffer - or, for a <see cref="IsPooled"/> list, the <see cref="QuadArena"/> block it
+            /// sits in, shared with other lists: bind it, never dispose it.
+            /// </summary>
             public MemoryBuffer1D<long, Stride1D.Dense>? Buffer { get; }
             public int Count { get; }
+            /// <summary>The quad of <see cref="Buffer"/> the list starts at: 0 for a list with its own buffer; draw with it as the first quad.</summary>
+            public int FirstQuad { get; }
+            /// <summary>True when the quads live in a <see cref="QuadArena"/> block (<see cref="ColumnMesher.Arena"/>) rather than a buffer of their own.</summary>
+            public bool IsPooled => _arena != null;
+            /// <summary>Which arena block holds the list (an index for <see cref="QuadArena.BufferOf"/>), -1 when it has a buffer of its own.</summary>
+            public int ArenaBlock => _arena != null ? _range.Block : -1;
             /// <summary>sectionCount + 1 entries: the quad index where each section starts, then the total.</summary>
             public int[] SectionStart { get; }
 
@@ -49,10 +65,34 @@ namespace SpawnDev.VoxelEngine.Meshing
                 Buffer = buffer; Count = count; SectionStart = sectionStart;
             }
 
+            /// <summary>A list whose quads were written to <paramref name="range"/> of <paramref name="arena"/>; disposing it frees the range.</summary>
+            public QuadList(QuadArena arena, QuadRange range, int[] sectionStart)
+            {
+                _arena = arena;
+                _range = range;
+                Buffer = arena.BufferOf(range.Block);
+                Count = range.Count;
+                FirstQuad = range.First;
+                SectionStart = sectionStart;
+            }
+
             public int SectionCount => SectionStart.Length - 1;
             public int QuadsIn(int section) => SectionStart[section + 1] - SectionStart[section];
 
-            public void Dispose() => Buffer?.Dispose();
+            /// <summary>The list's quads, copied back to the CPU (tests, tools): exactly <see cref="Count"/> of them, pooled or not.</summary>
+            public async Task<long[]> CopyToHostAsync()
+            {
+                if (Buffer == null || Count == 0) return System.Array.Empty<long>();
+                return await Buffer.View.SubView(FirstQuad, Count).CopyToHostAsync();
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                if (_arena != null) _arena.Free(_range);
+                else Buffer?.Dispose();
+            }
         }
     }
 
@@ -103,6 +143,13 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// section-local and a draw per section places them by section origin, as before.
         /// </summary>
         public bool EmbedSectionIndex { get; set; }
+
+        /// <summary>
+        /// Where the quad lists go. Null (the default): each list gets a buffer of its own. A <see cref="QuadArena"/>: the compact pass writes
+        /// each list into a shared block (<see cref="ColumnMesh.QuadList.IsPooled"/>), so a renderer binds a block once for many columns and no
+        /// buffer is created per mesh. Disposing the mesh gives the ranges back. Set before meshing; lists already made keep where they are.
+        /// </summary>
+        public QuadArena? Arena { get; set; }
 
         public ColumnMesher(Accelerator accelerator, int sectionCount = 24)
         {
@@ -247,8 +294,16 @@ namespace SpawnDev.VoxelEngine.Meshing
             if (total == 0)
                 return new ColumnMesh.QuadList(null, 0, start);
 
-            var output = _accelerator.Allocate1D<long>(total);
             sectionStartBuffer.CopyFromCPU(start.AsSpan(0, _sections).ToArray());
+            if (Arena is { } arena)
+            {
+                var range = arena.Allocate(total);
+                _compact((Index1D)(_sections * ColumnMeshKernels.ScratchQuadsPerSection),
+                    scratch.View, _counters.View.SubView(offset, _sections), sectionStartBuffer.View,
+                    arena.BufferOf(range.Block).View.SubView(range.First, total), _sections, EmbedSectionIndex ? 1 : 0);
+                return new ColumnMesh.QuadList(arena, range, start);
+            }
+            var output = _accelerator.Allocate1D<long>(total);
             _compact((Index1D)(_sections * ColumnMeshKernels.ScratchQuadsPerSection),
                 scratch.View, _counters.View.SubView(offset, _sections), sectionStartBuffer.View, output.View, _sections, EmbedSectionIndex ? 1 : 0);
             return new ColumnMesh.QuadList(output, total, start);

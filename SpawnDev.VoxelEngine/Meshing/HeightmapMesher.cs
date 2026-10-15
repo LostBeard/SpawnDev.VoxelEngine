@@ -42,6 +42,9 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// <summary>See <see cref="ColumnMesher.EmbedSectionIndex"/>: one draw per chunk instead of one per section.</summary>
         public bool EmbedSectionIndex { get; set; }
 
+        /// <summary>See <see cref="ColumnMesher.Arena"/>: the quad lists go into shared blocks instead of a buffer each.</summary>
+        public QuadArena? Arena { get; set; }
+
         public HeightmapMesher(Accelerator accelerator, int sectionCount = 24)
         {
             if (sectionCount < 1) throw new ArgumentOutOfRangeException(nameof(sectionCount));
@@ -139,8 +142,16 @@ namespace SpawnDev.VoxelEngine.Meshing
             if (total == 0)
                 return new ColumnMesh.QuadList(null, 0, start);
 
-            var output = _accelerator.Allocate1D<long>(total);
             sectionStartBuffer.CopyFromCPU(start.AsSpan(0, _sections).ToArray());
+            if (Arena is { } arena)
+            {
+                var range = arena.Allocate(total);
+                _compact((Index1D)(_sections * HeightmapMeshKernels.ScratchQuadsPerSection),
+                    scratch.View, _counters.View.SubView(offset, _sections), sectionStartBuffer.View,
+                    arena.BufferOf(range.Block).View.SubView(range.First, total), _sections, EmbedSectionIndex ? 1 : 0);
+                return new ColumnMesh.QuadList(arena, range, start);
+            }
+            var output = _accelerator.Allocate1D<long>(total);
             _compact((Index1D)(_sections * HeightmapMeshKernels.ScratchQuadsPerSection),
                 scratch.View, _counters.View.SubView(offset, _sections), sectionStartBuffer.View, output.View, _sections, EmbedSectionIndex ? 1 : 0);
             return new ColumnMesh.QuadList(output, total, start);

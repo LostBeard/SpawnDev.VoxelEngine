@@ -104,8 +104,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         {
             var set = new HashSet<CmFace>();
             if (list.Buffer == null) return set;
-            var quads = await list.Buffer.CopyToHostAsync();
-            if (quads.Length != list.Count) throw new Exception($"{pass}: buffer holds {quads.Length} quads, list says {list.Count}");
+            var quads = await list.CopyToHostAsync(); // the list's own range: a pooled list shares its buffer with others
+            if (quads.Length != list.Count) throw new Exception($"{pass}: read {quads.Length} quads, list says {list.Count}");
             for (int s = 0; s < list.SectionCount; s++)
                 for (int q = list.SectionStart[s]; q < list.SectionStart[s + 1]; q++)
                 {

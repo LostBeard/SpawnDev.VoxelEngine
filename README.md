@@ -25,6 +25,7 @@ Write voxel engine code in C# and let SpawnDev.ILGPU handle the GPU backend. In 
 - **Texture array, not atlas** - a greedy-merged quad tiles its texture once per block, so the textures are a repeating `texture_2d_array`. `BlockTextureArray.FromAtlas` slices an RGBA atlas into layers on the GPU, and `BlockMaterial` maps each block type's six faces to layers.
 - **`ColumnMesher`** - a whole block column (all its 16-high sections) meshed on the GPU in a handful of dispatches: class-aware (`BlockClass`: opaque, see-through leaves/glass, water, plants), exact across column borders, greedy-merged, with one tiny counter readback per column. A column can come straight from a JS typed array (`CreateColumnBufferFromJS`).
 - **Section placement by instance index** - one quad buffer holds many sections; a draw's `firstInstance` selects the section origin, so drawing a section writes no uniform.
+- **`QuadArena`** - a few large buffers that hold the quads of hundreds of meshes (`ColumnMesher.Arena`): a renderer binds a buffer once per pass instead of once per column, which is what a weak CPU spends its frame on. Each list is drawn from its own `FirstQuad`.
 
 ### Beyond Meshing
 - **Terrain carving** - `TerrainCarveService` with sphere/box/cylinder add/remove modes and `ITerrainCarve` interface. NMS-style sphere terraform shipped in Lost Spawns.
