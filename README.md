@@ -4,7 +4,7 @@
 
 **High-performance voxel engine built on [SpawnDev.ILGPU](https://github.com/LostBeard/SpawnDev.ILGPU). GPU-accelerated meshing, culling, LOD, terrain carving, physics, destruction, and VR rendering - from a single C# codebase targeting WebGPU, WebGL, Wasm, CUDA, OpenCL, and CPU.**
 
-> **Status:** `0.2.0-rc.2` - release candidate. The block renderer and the GPU meshers (`BlockRenderPipeline`, `ColumnMesher`, `HeightmapMesher`) run AubsCraft's 3D viewer in production; the rest of the API is functional and consumed by Lost Spawns. Expect iteration during the RC cycle.
+> **Status:** `0.2.0-rc.3` - release candidate. The block renderer and the GPU meshers (`BlockRenderPipeline`, `ColumnMesher`, `HeightmapMesher`) run AubsCraft's 3D viewer in production; the rest of the API is functional and consumed by Lost Spawns. Expect iteration during the RC cycle.
 
 Write voxel engine code in C# and let SpawnDev.ILGPU handle the GPU backend. In the browser, WebGPU compute shaders power the entire pipeline. On desktop, CUDA and OpenCL take over automatically. The same kernels run everywhere.
 

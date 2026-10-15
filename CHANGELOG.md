@@ -1,6 +1,6 @@
 # SpawnDev.VoxelEngine Changelog
 
-## Unreleased (0.2.0-rc.3) - a texture ATLAS (no layer limit) and animated tiles
+## 0.2.0-rc.3 (2026-10-15) - a texture ATLAS (no layer limit), animated tiles, per-face tint
 
 AubsCraft's textures move from a hand-picked 80 to every block texture of the game (1,400+) with every frame of every animated one: several
 thousand tiles. A WebGPU texture ARRAY holds 256 layers unless the device asks for more, and the device is created by SpawnDev.ILGPU.
