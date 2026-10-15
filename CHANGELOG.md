@@ -12,6 +12,7 @@ frame spent recording them. After `EmbedSectionIndex` removed the per-section dr
   binds once instead of once per column. A block is added when nothing fits (a list longer than a block gets a block of its own);
   disposing a mesh gives its ranges back, a second Dispose is harmless. Null (the default): each list keeps its own buffer, nothing changes.
 - **`ColumnMesh.QuadList`**: `FirstQuad`, `IsPooled`, `ArenaBlock`, and `CopyToHostAsync()` (exactly the list's quads, pooled or not).
+- **`BlockRenderPipeline.QuadBufferBinds` / `PipelineSwitches`**: running totals of what `BindPass` actually issued (it skips repeats, so its call count is not the number of binds); a renderer subtracts two readings for a frame. Tested in `BlockRender_BindPass_SkipsRepeats_ButNeverSkipsAChangeTest` (5 calls = 4 buffer binds + 3 switches).
 - **`RangeAllocator`** (`Buffers/`): the best-fit range allocator with merging behind the arena; pure bookkeeping.
 - Tests (CPU, Wasm and WebGPU lanes): the allocator against a brute-force model (20k random allocate/free steps, no overlap, totals),
   best-fit vs first-fit, double free, merge; pooled meshes hold exactly the quads of unpooled ones (as a set: the merge appends with

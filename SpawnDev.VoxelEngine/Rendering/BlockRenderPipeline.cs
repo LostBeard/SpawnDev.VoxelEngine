@@ -41,6 +41,14 @@ namespace SpawnDev.VoxelEngine.Rendering
         public bool IsReady => _opaque != null;
         /// <summary>How many quad buffers have a cached bind group (grows with each buffer bound, shrinks with <see cref="ReleaseQuadBuffer"/>).</summary>
         public int CachedQuadBindGroups => _quadBindGroups.Count;
+
+        /// <summary>
+        /// Quad-buffer binds <see cref="BindPass"/> has actually issued, and pipeline switches (each also sets the frame group): running totals.
+        /// <see cref="BindPass"/> skips a repeat, so these are the calls into the browser, not the number of times it was called; a renderer
+        /// subtracts two readings to report a frame.
+        /// </summary>
+        public long QuadBufferBinds { get; private set; }
+        public long PipelineSwitches { get; private set; }
         public int MaxSections => _maxSections;
 
         /// <param name="colorFormat">The colour target's format (the canvas format, or "bgra8unorm" for an offscreen target).</param>
@@ -257,6 +265,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             {
                 pass.SetPipeline(kind switch { Pass.Opaque => _opaque!, Pass.Cross => _cross!, _ => _water! });
                 pass.SetBindGroup(0, _frameBindGroup);
+                PipelineSwitches++;
                 _lastPass = pass;
                 _lastKind = kind;
                 _lastQuadBuffer = null;
@@ -264,6 +273,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             if (!ReferenceEquals(quadBuffer, _lastQuadBuffer))
             {
                 pass.SetBindGroup(1, GetQuadBindGroup(quadBuffer));
+                QuadBufferBinds++;
                 _lastQuadBuffer = quadBuffer;
             }
         }

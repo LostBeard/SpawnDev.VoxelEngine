@@ -656,6 +656,10 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 BrExpect(pixels, 96, 60, 16, 255, 128, 0, "z=1: orange from the water-pass draw (full alpha, the water pass has no per-face shade)", tolerance: 12);
                 BrExpect(pixels, 96, 36, 16, 0, c, c, "z=2: cyan from the opaque draw after two changes");
                 BrExpect(pixels, 96, 12, 16, 0, c, c, "z=3: cyan from the second opaque buffer (same pass kind)");
+                // What BindPass really issued: A (first), C (buffer change), B (pass + buffer), A again (pass + buffer) = 4 buffer binds and 3
+                // pipeline switches. The exact repeat of A cost nothing, and the five BindPass calls are not the number of binds.
+                if (pipeline.QuadBufferBinds != 4 || pipeline.PipelineSwitches != 3)
+                    throw new Exception($"Expected 4 quad-buffer binds and 3 pipeline switches from 5 BindPass calls, got {pipeline.QuadBufferBinds} and {pipeline.PipelineSwitches}");
             }
             finally
             {
