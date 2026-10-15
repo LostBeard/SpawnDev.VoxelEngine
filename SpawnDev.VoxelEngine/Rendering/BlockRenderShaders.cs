@@ -58,6 +58,7 @@ const NO_TEXTURE: u32 = 0xFFFFu;
 const FLAG_TINTED: u32 = 1u;
 const FLAG_LOWER_TOP: u32 = 2u;
 const FLAG_FLAT_SHADING: u32 = 4u;
+const FLAG_DARKEN: u32 = 8u;
 
 // Two triangles per quad from four corners: (0,1,2) and (1,3,2). corner = a*2 + b: a runs along the quad's A axis, b along its B axis.
 const cornerOrder = array<u32, 6>(0u, 1u, 2u, 1u, 3u, 2u);
@@ -190,10 +191,15 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     }
     out.layer = tile;
 
-    // Colour before the texture: the tint (when tinted, or when there is no texture to show), else white; times the face brightness
+    // Colour before the texture: the tint (when the block is tinted, when THIS face is, or when there is no texture to show), else white;
+    // times the face brightness. A grass block tints its top and not its sides: the mask is one bit per face (a plant uses face 0's).
     var base = vec3<f32>(1.0, 1.0, 1.0);
-    if ((m.flags & FLAG_TINTED) != 0u || out.layer == NO_TEXTURE) {
+    let faceTinted = ((m.flags >> (16u + f)) & 1u) != 0u;
+    if ((m.flags & FLAG_TINTED) != 0u || faceTinted || out.layer == NO_TEXTURE) {
         base = m.tint.xyz;
+    }
+    if ((m.flags & FLAG_DARKEN) != 0u) {
+        base = base * 0.7;   // what lies under water
     }
     var shade = faceBase[face];
     if ((m.flags & FLAG_FLAT_SHADING) != 0u) {

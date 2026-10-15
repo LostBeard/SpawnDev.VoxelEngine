@@ -36,6 +36,14 @@ namespace SpawnDev.VoxelEngine.Rendering
         public const uint FlagLowerTop = 2;
         /// <summary>No per-face brightness steps: side and top faces draw at full brightness, only the bottom face is darkened (water).</summary>
         public const uint FlagFlatShading = 4;
+        /// <summary>Every face is drawn at 0.7 of its colour: what lies under water (the same block, darker).</summary>
+        public const uint FlagDarken = 8;
+
+        /// <summary>
+        /// The tint multiplies only the faces named by <paramref name="faceMask"/> (bit f = face f: 0 +X, 1 -X, 2 +Z, 3 -Z, 4 +Y, 5 -Y): the top of a
+        /// grass block takes the biome's colour and its sides do not. OR the result into <see cref="Flags"/>. <see cref="FlagTinted"/> tints them all.
+        /// </summary>
+        public static uint TintFaces(int faceMask) => (uint)(faceMask & 63) << 16;
 
         /// <summary>A material that draws every face with the same texture layer.</summary>
         public static BlockMaterial Uniform(ushort layer, Vector3? tint = null, uint flags = 0, float alpha = 1f)

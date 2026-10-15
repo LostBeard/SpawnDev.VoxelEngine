@@ -15,6 +15,10 @@ thousand tiles. A WebGPU texture ARRAY holds 256 layers unless the device asks f
 - Bindings of group 0: 3 = the atlas (2D), 4 = the animation table, 5 = the timelines (the sampler is gone).
 
 ### Added
+- **Per-face tint and a darken flag in `BlockMaterial`.** `BlockMaterial.TintFaces(mask)` (bit f = face f; OR it into `Flags`) tints only the named faces: the top of a
+  grass block takes the biome colour, its sides do not (`FlagTinted` still tints them all). `FlagDarken` draws every face at 0.7 of its colour: what lies
+  under water, without faking it through the tint (which cannot differ per face). Tests: top tinted and side not, a mask that does not name the face,
+  `FlagTinted` still tinting the side, darken alone and with a tint; 3 mutations (mask shift, no darken, mask ignored) caught.
 - **Animated tiles.** `BlockRenderPipeline.SetAnimations(IReadOnlyList<TextureAnimation>)`: `TextureAnimation(BaseTile, int[] Timeline)` lists the tile to
   show for each TICK (20 a second) of its loop; wherever a face names `BaseTile` the vertex shader draws `Timeline[tick % Timeline.Length]`, with
   `tick = floor(BlockFrameUniforms.Time * 20)`. A frame that lasts several ticks, repeats or plays out of order is just a longer list, which covers

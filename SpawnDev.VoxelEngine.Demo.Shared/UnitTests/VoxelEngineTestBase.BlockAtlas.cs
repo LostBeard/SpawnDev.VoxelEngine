@@ -118,6 +118,70 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             BaExpect(got[3], 255, 0, 0, "tile 0 (top left)");
         });
 
+        /// <summary>One quad of the given face code for block type 1 at the origin, seen from the given side; the pixel at the centre of the image.</summary>
+        private static async Task<(byte r, byte g, byte b)> BaRenderFace(GPUDevice device, GPUQueue queue, BlockMaterial material, int face)
+        {
+            var atlas = BaSolidAtlas(4, 1, 1, _ => (255, 255, 255, 255));
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, atlas, 4, 4, 4);
+            using var pipeline = new BlockRenderPipeline();
+            pipeline.Init(device, queue, "bgra8unorm", maxSections: 4);
+            pipeline.SetTextures(textures);
+            pipeline.SetMaterials(new[] { BlockMaterial.Missing, material });
+            // +Y seen from above, +Z seen from the front: a block at the origin, 1 wide
+            var (eye, target, up) = face == 4
+                ? (new Vector3(0.5f, 3f, 0.5f), new Vector3(0.5f, 0f, 0.5f), -Vector3.UnitZ)
+                : (new Vector3(0.5f, 0.5f, 3f), new Vector3(0.5f, 0.5f, 0f), Vector3.UnitY);
+            pipeline.BeginFrame(BrNeutral(BrView(eye, target, up) * BrProj90, eye));
+            var quads = new[] { PackedQuad.Pack(0, 0, 0, 1, 1, face, 1) };
+            var buffer = CreateQuadBuffer(device, queue, quads);
+            var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 64, 64);
+            try
+            {
+                using var encoder = device.CreateCommandEncoder();
+                using (var pass = pipeline.BeginRenderPass(encoder, colorView, depthView, Vector3.Zero))
+                {
+                    pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, buffer);
+                    pipeline.Draw(pass, 0, 1, 0);
+                    pass.End();
+                }
+                using var cmd = encoder.Finish();
+                queue.Submit(new[] { cmd });
+                await queue.OnSubmittedWorkDone();
+                var (r, g, b, _) = GetPixel(await ReadBackPixels(device, queue, colorTex, 64, 64), 64, 32, 32);
+                return (r, g, b);
+            }
+            finally
+            {
+                pipeline.ReleaseQuadBuffer(buffer);
+                buffer.Destroy(); buffer.Dispose();
+                DisposeTargets(colorTex, depthTex, colorView, depthView);
+            }
+        }
+
+        [TestMethod]
+        public async Task BlockRender_TintFaces_TintOnlyTheNamedFaces_TheTopOfGrassAndNotItsSidesTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            // A white texture, a green tint on the TOP face only (bit 4): the top comes out green, a side stays white (lit as a side)
+            var m = BlockMaterial.Uniform(0, new Vector3(0.5f, 1f, 0.5f), flags: BlockMaterial.TintFaces(1 << 4));
+            BaExpect(await BaRenderFace(device, queue, m, 4), 134, 255, 134, "the top: white x tint (0.5, 1, 0.5) x 1.05, clamped");
+            BaExpect(await BaRenderFace(device, queue, m, 2), 178, 178, 178, "a +Z side: white x 0.82 x 0.85, no tint");
+            // The same tint on every face when the block is tinted outright
+            var all = BlockMaterial.Uniform(0, new Vector3(0.5f, 1f, 0.5f), flags: BlockMaterial.FlagTinted);
+            BaExpect(await BaRenderFace(device, queue, all, 2), 89, 178, 89, "FlagTinted tints the side too");
+            // A mask that does not name the face leaves it alone
+            var other = BlockMaterial.Uniform(0, new Vector3(0.5f, 1f, 0.5f), flags: BlockMaterial.TintFaces(1 << 5));
+            BaExpect(await BaRenderFace(device, queue, other, 4), 255, 255, 255, "the top is not in the mask");
+        });
+
+        [TestMethod]
+        public async Task BlockRender_Darken_ScalesTheColourBy07_ForWhatLiesUnderWaterTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            BaExpect(await BaRenderFace(device, queue, BlockMaterial.Uniform(0), 4), 255, 255, 255, "control: an untouched white top (1.05 clamps)");
+            BaExpect(await BaRenderFace(device, queue, BlockMaterial.Uniform(0, flags: BlockMaterial.FlagDarken), 4), 187, 187, 187, "darkened to 0.7, then the top's 1.05: 0.735");
+            BaExpect(await BaRenderFace(device, queue, BlockMaterial.Uniform(0, new Vector3(1f, 0.5f, 0.5f), flags: BlockMaterial.FlagTinted | BlockMaterial.FlagDarken), 4),
+                187, 94, 94, "a tint and darkening together: (1, 0.5, 0.5) x 0.7 x 1.05");
+        });
+
         [TestMethod]
         public async Task BlockRender_AnimatedTile_PlaysItsTimelineByTime_AndLeavesOtherTilesAloneTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
         {
