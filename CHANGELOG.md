@@ -1,5 +1,23 @@
 # SpawnDev.VoxelEngine Changelog
 
+## Unreleased - the ENTITY pipeline: creatures drawn as textured model boxes, in one instanced draw
+
+### Added
+- **`EntityRenderPipeline`** draws every part of every model of a world in ONE instanced draw (36 vertices an instance: the shader expands a box).
+  `EntityPartInstance` (128 bytes: a model matrix, the box's origin/size in model pixels, an overlay inflation, a mirror flag, a texture origin, a tint) is the
+  whole CPU-side cost of a part; `SetParts` uploads a frame's worth (grows the buffer, caps at 131,072 parts and says how many it dropped).
+  Model space is Minecraft's (y down, 16 px a block); the box texture is laid out the way Minecraft lays a model's boxes out (top and bottom over the four
+  sides), so a vanilla model's texture offsets work unchanged. Mirrored boxes (the left limbs reuse the right limbs' texture) swap the side regions and run u backwards.
+  Overlay layers (a hat, a coat, wool) inflate the geometry, not the texture lookup. Alpha under 0.1 is discarded; a tint multiplies the texture.
+- **`EntityTextureAtlas`**: one 2D texture of any mix of image sizes packed by the caller, read with exact texels in atlas pixels (no table of sizes on the
+  GPU); `WriteRegion` rewrites a rectangle while the atlas is in use (a player's skin arriving).
+- `BlockRenderPipeline.FrameBuffer`: the frame uniforms other pipelines share. The entity pipeline reads the SAME buffer, so a creature is lit and fogged exactly
+  like the ground it stands on. Draw it inside the block pass, after the opaque and plant passes and before the water.
+- Tests (WebGPU pixel readback, 11): each face of a box shows its own region of the cross layout; a mirrored box swaps the side regions; every side reads left to
+  right and upright seen from outside; the top runs its texture frontward; tint, transparency, inflation, depth order across instances, fog, face shading, buffer
+  growth. Eleven mutations (a flipped u, a flipped top v, no mirror swap, no inflation, no tint, no discard, one instance, no depth write, no fog, a flipped back u, no face
+  shading) were each caught.
+
 ## 0.2.0-rc.3 (2026-10-15) - a texture ATLAS (no layer limit), animated tiles, per-face tint
 
 AubsCraft's textures move from a hand-picked 80 to every block texture of the game (1,400+) with every frame of every animated one: several

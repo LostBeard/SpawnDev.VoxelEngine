@@ -50,6 +50,8 @@ namespace SpawnDev.VoxelEngine.Rendering
         public long QuadBufferBinds { get; private set; }
         public long PipelineSwitches { get; private set; }
         public int MaxSections => _maxSections;
+        /// <summary>The frame uniform buffer (<see cref="BlockFrameUniforms"/>, written by <see cref="BeginFrame"/>): other pipelines drawn in the same pass share it, so they are lit and fogged alike.</summary>
+        public GPUBuffer FrameBuffer => _frameBuffer ?? throw new InvalidOperationException("Call Init first");
 
         /// <param name="colorFormat">The colour target's format (the canvas format, or "bgra8unorm" for an offscreen target).</param>
         /// <param name="maxSections">How many section origins the origin buffer holds (the draw's firstInstance must be below it).</param>
