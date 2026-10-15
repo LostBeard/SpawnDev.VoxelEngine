@@ -31,6 +31,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _hood;
         private readonly MemoryBuffer1D<long, Stride1D.Dense> _scratchOpaque, _scratchWater;
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _counters;       // 2 x (sections + 1)
+        private readonly int[] _zeroCounters;
         private readonly MemoryBuffer1D<int, Stride1D.Dense>[] _sectionStart; // opaque, water
 
         /// <summary>Added to the type of a seabed (what lies under water); 0 keeps the type.</summary>
@@ -58,6 +59,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             _scratchOpaque = accelerator.Allocate1D<long>(scratch);
             _scratchWater = accelerator.Allocate1D<long>(scratch);
             _counters = accelerator.Allocate1D<int>(2 * (sectionCount + 1));
+            _zeroCounters = new int[2 * (sectionCount + 1)];
             _sectionStart = new[] { accelerator.Allocate1D<int>(sectionCount), accelerator.Allocate1D<int>(sectionCount) };
         }
 
@@ -112,7 +114,10 @@ namespace SpawnDev.VoxelEngine.Meshing
             }
 
             int stride = _sections + 1;
-            _counters.MemSetToZero();
+            // CopyFromCPU, not MemSetToZero: an upload is ordered after the previous run's still-queued kernels on every backend (the Wasm
+            // backend queues it behind pending dispatches), a memset is not documented to be - and on Wasm the previous run's compaction
+            // could still be reading these counters when they were cleared
+            _counters.CopyFromCPU(_zeroCounters);
             _mesh((Index1D)HeightmapLayout.Cells, _hood.View, _typeFlags.View, _scratchOpaque.View, _scratchWater.View, _counters.View,
                 missing, SeabedTypeOffset, _sections);
 

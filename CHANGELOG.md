@@ -1,6 +1,24 @@
 # SpawnDev.VoxelEngine Changelog
 
-## 0.2.0-local.4 (2026-10-14, local feed only, not released) - fewer calls per frame
+## 0.2.0-rc.1 (2026-10-15) - AubsCraft's viewer release: textured block rendering, GPU column and heightmap meshers, fewer calls per frame
+
+The four local builds below (0.2.0-local.1 to local.4) are this release; AubsCraft's 3D viewer has run on them in production since 2026-10-14.
+
+### Fixed in the release build
+- **`ColumnMesher` / `HeightmapMesher` on the Wasm backend: a second mesh on the same instance could report every quad twice.** Each mesh
+  cleared its counters with a synchronous `MemSetToZero`, which the browser backends do not order after the previous run's still-queued
+  kernels (the Wasm backend applies it immediately while the previous compaction may still be reading the counters). Now the counters are
+  reset with `CopyFromCPU`, which every backend orders after pending work. Found by the full multi-lane run
+  (`WasmTests.ColumnMesher_SingleBlock_SixQuadsAndNothingElseTest`, deterministic); a synchronize between the two meshes made it pass, which
+  pinned the cause. WebGPU (what AubsCraft runs) was never affected.
+
+### Known issues
+- 39 tests of the older kernels fail on the WebGL lane (FaceCull, Compaction, GreedyMergeGpu, Dmc*, FrustumCull: WebGL has no atomics or
+  shared memory). The identical set fails on the commit before this release (ILGPU 5.2.16), so they are not caused by it. The new
+  `BlockRenderPipeline`, `ColumnMesher` and `HeightmapMesher` tests are skipped on WebGL (they need atomics / scatter stores).
+- Full run: 2055 tests, 1749 passed, 267 skipped, 39 failed (all WebGL, pre-existing).
+
+### Built as 0.2.0-local.4 - fewer calls per frame
 
 AubsCraft's viewer profile (CPU time to RECORD the frame was the whole frame: 9-18 ms for 2400-4100 draws and 700-1100 buffer binds)
 showed the cost is calls into the browser, not the GPU. Two changes:
@@ -16,7 +34,7 @@ showed the cost is calls into the browser, not the GPU. Two changes:
   buffer, changes the kind, and returns to an earlier one - all draws land.
 - 7 single mutations of the above, all killed (one needed a stronger test first: a buffer change within one pass kind).
 
-## 0.2.0-local.3 (2026-10-14, local feed only, not released) - HeightmapMesher (the far tier)
+### Built as 0.2.0-local.3 - HeightmapMesher (the far tier)
 
 - **`HeightmapMesher`**: a chunk's heightmap (top block per column, plus the seabed under water) meshed on the GPU into
   `PackedQuad`s per 16-high section - the same `ColumnMesh` result, so a far chunk is drawn exactly like a meshed column, by section
@@ -30,14 +48,14 @@ showed the cost is calls into the browser, not the GPU. Two changes:
   a worst-case checkerboard through every section (the scratch bound), reuse after a busy chunk, wrong-size rejection, JS upload,
   a type emitting both passes is solid. 21 single mutations, all killed.
 
-## 0.2.0-local.2 (2026-10-14, local feed only, not released) - ReleaseQuadBuffer
+### Built as 0.2.0-local.2 - ReleaseQuadBuffer
 
 - **`BlockRenderPipeline.ReleaseQuadBuffer(GPUBuffer)`**: drops one quad buffer's cached bind group. A viewer re-meshes and evicts
   columns all the time, and the cache otherwise keeps a bind group for every buffer ever drawn. `CachedQuadBindGroups` reports the
   count. Test: bind -> 1, release + destroy -> 0, a later buffer draws and counts 1, releasing an unbound or already released
   buffer is harmless; the no-op mutation is killed by it.
 
-## 0.2.0-local.1 (2026-10-14, local feed only, not released) - Textured block rendering
+### Built as 0.2.0-local.1 - Textured block rendering
 
 AubsCraft's 3D viewer is moving onto this library (its own mesh kernels read every mesh back to .NET and draw one flat colour
 per block). `VertexPullPipeline` draws flat colours only, so the renderer a Minecraft-style game needs lives here now:

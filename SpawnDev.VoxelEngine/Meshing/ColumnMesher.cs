@@ -86,6 +86,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         private readonly MemoryBuffer1D<long, Stride1D.Dense> _emit, _occlude, _faceMasks;
         private readonly MemoryBuffer1D<long, Stride1D.Dense> _scratchOpaque, _scratchPlants, _scratchWater;
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _counters;       // 3 passes x (sections + 1)
+        private readonly int[] _zeroCounters;
         private readonly MemoryBuffer1D<int, Stride1D.Dense>[] _sectionStart; // one per pass
         private readonly MemoryBuffer1D<ushort, Stride1D.Dense>[] _dummyColumns; // one per neighbour: a bound view must never alias another binding
 
@@ -131,6 +132,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             _scratchPlants = accelerator.Allocate1D<long>(scratch);
             _scratchWater = accelerator.Allocate1D<long>(scratch);
             _counters = accelerator.Allocate1D<int>(3 * (sectionCount + 1));
+            _zeroCounters = new int[3 * (sectionCount + 1)];
             _sectionStart = new[]
             {
                 accelerator.Allocate1D<int>(sectionCount), accelerator.Allocate1D<int>(sectionCount), accelerator.Allocate1D<int>(sectionCount),
@@ -198,7 +200,10 @@ namespace SpawnDev.VoxelEngine.Meshing
             var vPosZ = (posZ ?? _dummyColumns[3]).View;
 
             int stride = _sections + 1;
-            _counters.MemSetToZero();
+            // CopyFromCPU, not MemSetToZero: an upload is ordered after the previous run's still-queued kernels on every backend (the Wasm
+            // backend queues it behind pending dispatches), a memset is not documented to be - and on Wasm the previous run's compaction
+            // could still be reading these counters when they were cleared
+            _counters.CopyFromCPU(_zeroCounters);
 
             // Opaque pass, then water pass: same kernels, different bits of the class table
             RunCubePass(column.View, vNegX, vPosX, vNegZ, vPosZ, BlockClass.OpaqueShift, missing, solid, _scratchOpaque, _counters.View.SubView(0, stride));
