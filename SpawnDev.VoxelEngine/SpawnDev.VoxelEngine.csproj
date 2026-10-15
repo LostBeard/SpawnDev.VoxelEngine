@@ -4,8 +4,8 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<Version>0.2.0-rc.1</Version>
-		<PackageReleaseNotes>0.2.0-rc.1: the renderer a Minecraft-style game needs - BlockRenderPipeline, ColumnMesher (a whole column meshed on the GPU), HeightmapMesher (far tier), the section index inside the quad (one draw per column), BindPass skipping repeats; see CHANGELOG.md. Earlier (0.2.0-local.1): BlockRenderPipeline (textured/tinted/lit/fogged blocks from PackedQuad buffers; opaque, plant and water passes; texture array with repeat so merged quads tile), BlockTextureArray.FromAtlas (GPU-side atlas slicing), BlockMaterial; deps SpawnDev.ILGPU 5.3.7, SpawnJS.Blazor 3.0.4. Earlier: Dig remesh: reuse padded staging + GPU block upload buffer; MeshChunkColumn Y-range/section-list overloads; BlockColumnCarveService + FillKernel; ExplosionKernels byte-column helpers.</PackageReleaseNotes>
+		<Version>0.2.0-rc.2</Version>
+		<PackageReleaseNotes>0.2.0-rc.2: QuadArena (the quad lists of many meshes in a few shared GPU buffers; ColumnMesher.Arena / HeightmapMesher.Arena, QuadList.FirstQuad), RangeAllocator, BlockRenderPipeline.QuadBufferBinds / PipelineSwitches; see CHANGELOG.md. 0.2.0-rc.1: the renderer a Minecraft-style game needs - BlockRenderPipeline, ColumnMesher (a whole column meshed on the GPU), HeightmapMesher (far tier), the section index inside the quad (one draw per column), BindPass skipping repeats; see CHANGELOG.md. Earlier (0.2.0-local.1): BlockRenderPipeline (textured/tinted/lit/fogged blocks from PackedQuad buffers; opaque, plant and water passes; texture array with repeat so merged quads tile), BlockTextureArray.FromAtlas (GPU-side atlas slicing), BlockMaterial; deps SpawnDev.ILGPU 5.3.7, SpawnJS.Blazor 3.0.4. Earlier: Dig remesh: reuse padded staging + GPU block upload buffer; MeshChunkColumn Y-range/section-list overloads; BlockColumnCarveService + FillKernel; ExplosionKernels byte-column helpers.</PackageReleaseNotes>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<EmbedAllSources>true</EmbedAllSources>

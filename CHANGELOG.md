@@ -1,6 +1,6 @@
 # SpawnDev.VoxelEngine Changelog
 
-## Unreleased (0.2.0-rc.2) - quad buffers shared by many meshes
+## 0.2.0-rc.2 (2026-10-15) - quad buffers shared by many meshes
 
 AubsCraft on an Intel UHD 620 laptop: 837 draws AND 837 buffer binds a frame (one quad buffer per column and pass), 17.6 ms of the 19.1 ms
 frame spent recording them. After `EmbedSectionIndex` removed the per-section draws, the per-mesh buffer was the remaining multiplier.
