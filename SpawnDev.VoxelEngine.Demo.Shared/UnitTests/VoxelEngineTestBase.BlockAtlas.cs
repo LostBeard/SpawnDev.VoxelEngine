@@ -1,3 +1,4 @@
+using SpawnDev.ILGPU.WebGPU;
 using System.Numerics;
 using SpawnDev.SpawnJS.JSObjects;
 using SpawnDev.UnitTesting;
@@ -159,19 +160,20 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         }
 
         /// <summary>One quad (face code) of block type 1 over an atlas of the given tile colours (16 px tiles, one row); the pixel at (px, py) of a 64 px image seen from the front (or above for face 4).</summary>
-        private static async Task<(byte r, byte g, byte b)> BaRenderPixel(GPUDevice device, GPUQueue queue, byte[] atlas, int tiles, BlockMaterial material, int face, int px, int py)
+        private static async Task<(byte r, byte g, byte b)> BaRenderPixel(GPUDevice device, GPUQueue queue, byte[] atlas, int tiles, BlockMaterial material, int face, int px, int py, int cellX = 0, int cellZ = 0)
         {
             using var textures = BlockTextureAtlas.FromRgba(device, queue, atlas, 16 * tiles, 16, 16);
             using var pipeline = new BlockRenderPipeline();
             pipeline.Init(device, queue, "bgra8unorm", maxSections: 4);
             pipeline.SetTextures(textures);
             pipeline.SetMaterials(new[] { BlockMaterial.Missing, material });
+            var shift = new Vector3(cellX, 0, cellZ);
             var (eye, target, up) = face == 4
-                ? (new Vector3(0.5f, 3f, 0.5f), new Vector3(0.5f, 0f, 0.5f), -Vector3.UnitZ)
-                : (new Vector3(0.5f, 0.5f, 3f), new Vector3(0.5f, 0.5f, 0f), Vector3.UnitY);
+                ? (new Vector3(0.5f, 3f, 0.5f) + shift, new Vector3(0.5f, 0f, 0.5f) + shift, -Vector3.UnitZ)
+                : (new Vector3(0.5f, 0.5f, 3f) + shift, new Vector3(0.5f, 0.5f, 0f) + shift, Vector3.UnitY);
             var frame = BrNeutral(BrView(eye, target, up) * BrProj90, eye);
             pipeline.BeginFrame(frame);
-            var buffer = CreateQuadBuffer(device, queue, new[] { PackedQuad.Pack(0, 0, 0, 1, 1, face, 1) });
+            var buffer = CreateQuadBuffer(device, queue, new[] { PackedQuad.Pack(cellX, 0, cellZ, 1, 1, face, 1) });
             var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 64, 64);
             try
             {
@@ -232,6 +234,129 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             if (await Filled(east, 38, 38)) throw new Exception("a ramp has left the floor at its high end");
             if (!await Filled(east, 26, 36)) throw new Exception("the low end of a ramp is on the floor");
             if (!await Filled(west, 26, 24) || await Filled(west, 38, 24)) throw new Exception("a ramp rising toward -X is high at its -X end");
+        });
+
+        [TestMethod]
+        public async Task BlockRender_ARamp_AwayFromTheOrigin_RisesByOneBlockAndNoMoreTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            // The same ramp as above, in the cell (4, 4): the shear is measured from the cell's own corner
+            var atlas = BaSolidAtlas(16, 1, 1, _ => (255, 255, 255, 255));
+            var east = BlockMaterial.Uniform(0, flags: BlockMaterial.Thickness(4) | BlockMaterial.Slope(BlockMaterial.SlopeEast));
+            async Task<bool> Filled(int col, int row) { var p = await BaRenderPixel(device, queue, atlas, 1, east, 2, col, row, 4, 4); return p.r + p.g + p.b > 60; }
+            if (!await Filled(38, 24)) throw new Exception("the high end of the ramp reaches row 24 at column 38");
+            if (await Filled(38, 8)) throw new Exception("and goes no higher than one block: row 8 (y 2) is empty");
+            if (await Filled(26, 24)) throw new Exception("the low end stays low");
+            if (!await Filled(26, 36)) throw new Exception("the low end is on the floor");
+        });
+
+        [TestMethod]
+        public async Task BlockRender_ARamp_ThroughTheMesherAndTheArena_InASectionAboveTheFirst_RisesByOneBlockTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            CmRequireGpuMeshing(accelerator);
+            // The real path: a column meshed by ColumnMesher (the section embedded in each quad, quads in the arena), a ramp cell at (4, 20, 4) in the second section, a stone block east of it
+            const int sections = 2;
+            using var arena = new QuadArena(accelerator);
+            using var mesher = new ColumnMesher(accelerator, sections) { MissingNeighborsAreSolid = false, EmbedSectionIndex = true, Arena = arena };
+            var flags = new int[] { BlockClass.None, BlockClass.Opaque, BlockClass.Cutout };      // air, stone, the thin block
+            mesher.SetBlockClasses(flags);
+            var col = new ushort[16 * 16 * 16 * sections];
+            col[4 + 4 * 16 + 20 * 256] = 2;       // the ramp cell
+            col[5 + 4 * 16 + 20 * 256] = 1;       // a stone block beside it, one block high
+            using var gpu = CmUpload(accelerator, col);
+            using var mesh = await mesher.MeshAsync(gpu);
+            var atlas = BaSolidAtlas(16, 1, 1, _ => (255, 255, 255, 255));
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, atlas, 16, 16, 16);
+            using var pipeline = new BlockRenderPipeline();
+            pipeline.Init(device, queue, "bgra8unorm", maxSections: 4);
+            pipeline.SetTextures(textures);
+            var ramp = BlockMaterial.Uniform(0, flags: BlockMaterial.Thickness(1) | BlockMaterial.Slope(BlockMaterial.SlopeWest));
+            pipeline.SetMaterials(new[] { BlockMaterial.Missing, BlockMaterial.Uniform(0, new Vector3(0.3f, 0.3f, 1f)), ramp });
+            pipeline.SetSectionOrigin(0, Vector3.Zero);
+            // From the south at 16 px a block, 3 blocks from the ramp's z, at the ramp's floor + 0.5: the ramp (rising toward -X) is seen edge-on; its high end is at x 4, its low end x 5
+            var eye = new Vector3(4.6f, 20.5f, 7f);
+            pipeline.BeginFrame(BrNeutral(BrView(eye, new Vector3(4.6f, 20.5f, 4f), Vector3.UnitY) * BrProj90, eye));
+            var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 64, 64);
+            try
+            {
+                using var encoder = device.CreateCommandEncoder();
+                using (var pass = pipeline.BeginRenderPass(encoder, colorView, depthView, Vector3.Zero))
+                {
+                    var list = mesh.Opaque;
+                    pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, list.Buffer!.GetGPUBuffer()!);
+                    pipeline.Draw(pass, list.FirstQuad, list.Count, 0);
+                    pass.End();
+                }
+                using var cmd = encoder.Finish();
+                queue.Submit(new[] { cmd });
+                await queue.OnSubmittedWorkDone();
+                var px = await ReadBackPixels(device, queue, colorTex, 64, 64);
+                // x 5 is column 32 + (5-4.6)*21 = 40 (the stone block's face); x 4.1 is column 32 - 10 = 22: the ramp's high end, a block above the floor
+                // Scale: the ramp's +Z face is 3 blocks from the eye... the stone is 1 block high from y 20 to 21: rows (y 20 -> 32 + 0.5*21 = 42) to (y 21 -> 21)
+                bool Filled(int col, int row) { var (r, g, b, _) = GetPixel(px, 64, col, row); return r + g + b > 60; }
+                if (!Filled(40, 30)) throw new Exception("the stone block (one high) fills the middle of its column");
+                if (Filled(40, 10)) throw new Exception("and nothing is above the stone");
+                // The ramp's high end (x ~ 4.1, column ~ 22) rises to about the stone's top (row 21) and not a block above it (row 0..10)
+                int top22 = Enumerable.Range(0, 64).FirstOrDefault(r => Filled(22, r), -1);
+                int top40 = Enumerable.Range(0, 64).FirstOrDefault(r => Filled(40, r), -1);
+                if (top22 < 0 || top22 > 24) throw new Exception($"the ramp's high end must reach about the stone's top: its highest row is {top22}, the stone's {top40}");
+                for (int row = 0; row < 14; row++) if (Filled(22, row)) throw new Exception($"the ramp must not rise a block above the stone: pixel (22,{row}) is filled");
+            }
+            finally { DisposeTargets(colorTex, depthTex, colorView, depthView); }
+        });
+
+        [TestMethod]
+        public async Task BlockRender_ARamp_BesideItsFlatNeighbours_InAFullHeightColumn_RisesByOneBlockTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            CmRequireGpuMeshing(accelerator);
+            // The viewer's scene: a stone floor, a flat thin rail, the ramp rising west, a stone block with a flat thin rail on top, all in a 24-section column
+            const int sections = 24;
+            using var arena = new QuadArena(accelerator);
+            using var mesher = new ColumnMesher(accelerator, sections) { MissingNeighborsAreSolid = false, EmbedSectionIndex = true, Arena = arena };
+            mesher.SetBlockClasses(new int[] { BlockClass.None, BlockClass.Opaque, BlockClass.Cutout, BlockClass.Cutout });   // air, stone, ramp, flat thin rail
+            var col = new ushort[16 * 16 * 16 * sections];
+            int Y = 4;                                           // the floor level of the scene (y = -60 is index 4)
+            for (int x = 0; x < 16; x++) for (int z = 0; z < 16; z++) col[x + z * 16 + (Y - 1) * 256] = 1;   // the floor
+            col[3 + 10 * 16 + Y * 256] = 1;                      // the stone block
+            col[3 + 10 * 16 + (Y + 1) * 256] = 3;                // the flat rail on it
+            col[4 + 10 * 16 + Y * 256] = 2;                      // the ramp, rising toward -X
+            col[5 + 10 * 16 + Y * 256] = 3;                      // the flat rail it comes from
+            using var gpu = CmUpload(accelerator, col);
+            using var mesh = await mesher.MeshAsync(gpu);
+            var atlas = BaSolidAtlas(16, 1, 1, _ => (255, 255, 255, 255));
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, atlas, 16, 16, 16);
+            using var pipeline = new BlockRenderPipeline();
+            pipeline.Init(device, queue, "bgra8unorm", maxSections: 4);
+            pipeline.SetTextures(textures);
+            var thin = BlockMaterial.Uniform(0, new Vector3(1f, 0.2f, 0.2f), flags: BlockMaterial.Thickness(1));
+            var ramp = BlockMaterial.Uniform(0, flags: BlockMaterial.Thickness(1) | BlockMaterial.Slope(BlockMaterial.SlopeWest));
+            pipeline.SetMaterials(new[] { BlockMaterial.Missing, BlockMaterial.Uniform(0, new Vector3(0.3f, 0.3f, 1f)), ramp, thin });
+            pipeline.SetSectionOrigin(0, Vector3.Zero);
+            // From the south at 16 px a block (2 blocks away), at the floor level + 0.5 (a block's height is 16 px): rows: y Y -> 40, Y+1 -> 24
+            var eye = new Vector3(4.5f, Y + 0.5f, 12f);
+            pipeline.BeginFrame(BrNeutral(BrView(eye, new Vector3(4.5f, Y + 0.5f, 10f), Vector3.UnitY) * BrProj90, eye));
+            var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 64, 64);
+            try
+            {
+                using var encoder = device.CreateCommandEncoder();
+                using (var pass = pipeline.BeginRenderPass(encoder, colorView, depthView, Vector3.Zero))
+                {
+                    var list = mesh.Opaque;
+                    pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, list.Buffer!.GetGPUBuffer()!);
+                    pipeline.Draw(pass, list.FirstQuad, list.Count, 0);
+                    pass.End();
+                }
+                using var cmd = encoder.Finish();
+                queue.Submit(new[] { cmd });
+                await queue.OnSubmittedWorkDone();
+                var px = await ReadBackPixels(device, queue, colorTex, 64, 64);
+                bool Filled(int c, int r) { var (rr, g, b, _) = GetPixel(px, 64, c, r); return rr + g + b > 60; }
+                // The stone block at x 3..4 (columns 8..24) is one block high (rows 24..40); the ramp, x 4..5 (columns 24..40), must not rise above the stone block's rail (about row 22)
+                int highest = Enumerable.Range(0, 64).Where(r => Enumerable.Range(24, 16).Any(c => Filled(c, r))).DefaultIfEmpty(-1).Min();
+                int stoneTop = Enumerable.Range(0, 64).Where(r => Enumerable.Range(9, 14).Any(c => Filled(c, r))).DefaultIfEmpty(-1).Min();
+                if (highest < 0 || stoneTop < 0) throw new Exception($"nothing drawn: ramp columns {highest}, stone columns {stoneTop}");
+                if (highest < stoneTop - 3) throw new Exception($"the ramp reaches row {highest}, above the stone block with its rail (row {stoneTop}): it rises more than one block");
+            }
+            finally { DisposeTargets(colorTex, depthTex, colorView, depthView); }
         });
 
         [TestMethod]
