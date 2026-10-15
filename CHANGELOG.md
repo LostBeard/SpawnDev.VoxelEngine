@@ -1,5 +1,21 @@
 # SpawnDev.VoxelEngine Changelog
 
+## 0.2.0-local.4 (2026-10-14, local feed only, not released) - fewer calls per frame
+
+AubsCraft's viewer profile (CPU time to RECORD the frame was the whole frame: 9-18 ms for 2400-4100 draws and 700-1100 buffer binds)
+showed the cost is calls into the browser, not the GPU. Two changes:
+
+- **Section index inside the quad.** `PackedQuad` bits 47-51 hold the quad's 16-high section within its column
+  (`PackedQuad.Pack(..., sectionIndex)`, `UnpackSectionIndex`, `WithSectionIndex`); `BlockRenderShaders` lifts the quad by
+  `sectionIndex * 16`. `ColumnMesher.EmbedSectionIndex` / `HeightmapMesher.EmbedSectionIndex` (off by default: nothing changes for
+  existing callers) write it during compaction, so ONE draw covers a whole column (or far chunk) instead of one per section, with a
+  single origin per column. Tests: field round trip; every meshed quad carries its section and the unit faces are unchanged (column and
+  heightmap meshers); a pixel test that a quad of section 1 draws 16 blocks up.
+- **`BlockRenderPipeline.BindPass` skips repeats**: the pipeline + frame group are set only when the pass kind (or the pass) changes,
+  the quad-buffer group only when the buffer does (3 browser calls became 0-1). Test: a sequence that repeats a bind, changes only the
+  buffer, changes the kind, and returns to an earlier one - all draws land.
+- 7 single mutations of the above, all killed (one needed a stronger test first: a buffer change within one pass kind).
+
 ## 0.2.0-local.3 (2026-10-14, local feed only, not released) - HeightmapMesher (the far tier)
 
 - **`HeightmapMesher`**: a chunk's heightmap (top block per column, plus the seabed under water) meshed on the GPU into

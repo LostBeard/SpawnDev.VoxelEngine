@@ -620,8 +620,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 
             // Three blocks side by side along +Z seen from +X: cyan (opaque pass, buffer A), orange (cross pass? no: water pass, buffer B),
             // cyan again (opaque pass, buffer A again, after the pass changed twice). All three must show.
-            var eye = new Vector3(3f, 0.5f, 1.5f);
-            pipeline.BeginFrame(BrNeutral(BrView(eye, new Vector3(1f, 0.5f, 1.5f), Vector3.UnitY) * BrProj90, eye));
+            var eye = new Vector3(3f, 0.5f, 2f);
+            pipeline.BeginFrame(BrNeutral(BrView(eye, new Vector3(1f, 0.5f, 2f), Vector3.UnitY) * BrProj90, eye));
 
             var bufferA = CreateQuadBuffer(device, queue, new[]
             {
@@ -629,6 +629,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 PackedQuad.Pack(0, 0, 2, 1, 1, 0, 1),   // z 2
             });
             var bufferB = CreateQuadBuffer(device, queue, new[] { PackedQuad.Pack(0, 0, 1, 1, 1, 0, 2) }); // z 1, type 2 (orange)
+            var bufferC = CreateQuadBuffer(device, queue, new[] { PackedQuad.Pack(0, 0, 3, 1, 1, 0, 1) }); // z 3, another buffer of the same pass kind as A
             var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 96, 32);
             try
             {
@@ -637,6 +638,8 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, bufferA);
                 pipeline.Draw(pass, 0, 1, 0);
                 pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, bufferA);   // an exact repeat: skipped inside
+                pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, bufferC);   // the buffer changes, the pass kind does not
+                pipeline.Draw(pass, 0, 1, 0);
                 pipeline.BindPass(pass, BlockRenderPipeline.Pass.Water, bufferB);    // pass and buffer change
                 pipeline.Draw(pass, 0, 1, 0);
                 pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, bufferA);   // back to the first pass and buffer
@@ -646,16 +649,18 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 queue.Submit(new[] { cmd });
                 await queue.OnSubmittedWorkDone();
                 var pixels = await ReadBackPixels(device, queue, colorTex, 96, 32);
-                // A 90 degree view of 96 px at distance 2 is 24 px per block: seen from +X the screen right is -Z, so z=0 is at x 72, z=1 at 48, z=2 at 24
+                // A 90 degree view of 96 px at distance 2 is 24 px per block: seen from +X the screen right is -Z, so with the eye at z=2
+                // the blocks z=0, 1, 2, 3 are at x = 84, 60, 36, 12
                 var c = BrFaceFactor(0) * 255f;
-                BrExpect(pixels, 96, 72, 16, 0, c, c, "z=0: cyan from the first opaque draw");
-                BrExpect(pixels, 96, 48, 16, 255, 128, 0, "z=1: orange from the water-pass draw (full alpha, the water pass has no per-face shade)", tolerance: 12);
-                BrExpect(pixels, 96, 24, 16, 0, c, c, "z=2: cyan from the opaque draw after two changes");
+                BrExpect(pixels, 96, 84, 16, 0, c, c, "z=0: cyan from the first opaque draw");
+                BrExpect(pixels, 96, 60, 16, 255, 128, 0, "z=1: orange from the water-pass draw (full alpha, the water pass has no per-face shade)", tolerance: 12);
+                BrExpect(pixels, 96, 36, 16, 0, c, c, "z=2: cyan from the opaque draw after two changes");
+                BrExpect(pixels, 96, 12, 16, 0, c, c, "z=3: cyan from the second opaque buffer (same pass kind)");
             }
             finally
             {
-                pipeline.ReleaseQuadBuffer(bufferA); pipeline.ReleaseQuadBuffer(bufferB);
-                bufferA.Destroy(); bufferA.Dispose(); bufferB.Destroy(); bufferB.Dispose();
+                pipeline.ReleaseQuadBuffer(bufferA); pipeline.ReleaseQuadBuffer(bufferB); pipeline.ReleaseQuadBuffer(bufferC);
+                bufferA.Destroy(); bufferA.Dispose(); bufferB.Destroy(); bufferB.Dispose(); bufferC.Destroy(); bufferC.Dispose();
                 DisposeTargets(colorTex, depthTex, colorView, depthView);
             }
         });    }
