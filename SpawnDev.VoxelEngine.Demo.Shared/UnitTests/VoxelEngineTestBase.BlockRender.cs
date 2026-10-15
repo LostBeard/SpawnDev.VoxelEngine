@@ -76,7 +76,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         private static async Task<byte[]> BrRender(GPUDevice device, GPUQueue queue, BlockMaterial[] materials, BrDraw[] draws,
             BlockFrameUniforms frame, Vector3 clear, int size = 64, Vector3[]? sectionOrigins = null)
         {
-            using var textures = BlockTextureArray.FromAtlas(device, queue, BrAtlas(), 32, 32, BrTile);
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, BrAtlas(), 32, 32, BrTile);
             using var pipeline = new BlockRenderPipeline();
             pipeline.Init(device, queue, "bgra8unorm", maxSections: 16);
             pipeline.SetTextures(textures);
@@ -337,7 +337,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var frame = BrNeutral(BrView(eye, new Vector3(3f, 1f, 0.5f), -Vector3.UnitZ) * BrProj90, eye);
             var origins = new[] { new Vector3(0, 0, 0), new Vector3(9, 9, 9), new Vector3(9, 9, 9), new Vector3(4, 0, 0) };
             var quads = new[] { PackedQuad.Pack(0, 0, 0, 1, 1, 4, 1) };
-            using var textures = BlockTextureArray.FromAtlas(device, queue, BrAtlas(), 32, 32, BrTile);
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, BrAtlas(), 32, 32, BrTile);
             using var pipeline = new BlockRenderPipeline();
             pipeline.Init(device, queue, "bgra8unorm", maxSections: 16);
             pipeline.SetTextures(textures);
@@ -486,11 +486,11 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         // =====================================================================
 
         [TestMethod]
-        public async Task BlockRender_TextureArrayFromAtlas_MapsTilesToLayersRowMajorTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        public async Task BlockRender_TextureAtlas_NumbersTilesRowMajorTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
         {
-            using var textures = BlockTextureArray.FromAtlas(device, queue, BrAtlas(), 32, 32, BrTile);
-            if (textures.LayerCount != 4 || textures.TileSize != 16)
-                throw new Exception($"A 32x32 atlas of 16px tiles must be 4 layers of 16, got {textures.LayerCount} of {textures.TileSize}");
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, BrAtlas(), 32, 32, BrTile);
+            if (textures.TileCount != 4 || textures.TileSize != 16)
+                throw new Exception($"A 32x32 atlas of 16px tiles must be 4 tiles of 16, got {textures.TileCount} of {textures.TileSize}");
 
             // layer 3 = the tile at column 1, row 1 = orange; layer 1 = column 1, row 0 = cyan
             var materials = new BlockMaterial[3];
@@ -518,7 +518,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var eye = new Vector3(0.5f, 1.5f, 0.5f);
             var frame = BrNeutral(BrView(eye, new Vector3(0.5f, 1f, 0.5f), -Vector3.UnitZ) * BrProj90, eye);
 
-            using var textures = BlockTextureArray.FromAtlas(device, queue, BrAtlas(), 32, 32, BrTile);
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, BrAtlas(), 32, 32, BrTile);
             using var pipeline = new BlockRenderPipeline();
             pipeline.Init(device, queue, "bgra8unorm", maxSections: 16);
             pipeline.SetTextures(textures);
@@ -572,11 +572,11 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         });
 
         [TestMethod]
-        public void BlockRender_TextureArrayFromAtlas_RejectsAnAtlasThatIsNotWholeTilesTest()
+        public void BlockRender_TextureAtlas_RejectsAnAtlasThatIsNotWholeTilesTest()
         {
             // A 30x32 atlas cannot be 16px tiles, and 10 bytes are not a 2x2 RGBA image: both are caught before any GPU work
             bool threw = false;
-            try { BlockTextureArray.FromAtlas(null!, null!, new byte[30 * 32 * 4], 30, 32, 16); }
+            try { BlockTextureAtlas.FromRgba(null!, null!, new byte[30 * 32 * 4], 30, 32, 16); }
             catch (ArgumentException) { threw = true; }
             if (!threw) throw new Exception("A 30x32 atlas of 16px tiles must be rejected");
         }
@@ -611,7 +611,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             materials[1] = BlockMaterial.Uniform(BrLayerCyan);
             materials[2] = BlockMaterial.Uniform(BrLayerOrange, alpha: 1f);
 
-            using var textures = BlockTextureArray.FromAtlas(device, queue, BrAtlas(), 32, 32, BrTile);
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, BrAtlas(), 32, 32, BrTile);
             using var pipeline = new BlockRenderPipeline();
             pipeline.Init(device, queue, "bgra8unorm", maxSections: 16);
             pipeline.SetTextures(textures);

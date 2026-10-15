@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace SpawnDev.VoxelEngine.Rendering
 {
     /// <summary>
-    /// How one block type is drawn by <see cref="BlockRenderPipeline"/>: a texture-array layer for each of its six faces, a tint,
+    /// How one block type is drawn by <see cref="BlockRenderPipeline"/>: a texture-atlas tile for each of its six faces, a tint,
     /// and a few flags. One 32-byte entry per block type (indexed by the 12-bit type in <see cref="PackedQuad"/>), uploaded as a
     /// storage buffer. Matches the WGSL <c>BlockMaterial</c> struct byte for byte.
     ///
@@ -14,11 +14,11 @@ namespace SpawnDev.VoxelEngine.Rendering
     [StructLayout(LayoutKind.Sequential)]
     public struct BlockMaterial
     {
-        /// <summary>Layers of faces 0 and 1 (low and high 16 bits).</summary>
+        /// <summary>Tiles of faces 0 and 1 (low and high 16 bits).</summary>
         public uint Layers01;
-        /// <summary>Layers of faces 2 and 3.</summary>
+        /// <summary>Tiles of faces 2 and 3.</summary>
         public uint Layers23;
-        /// <summary>Layers of faces 4 and 5.</summary>
+        /// <summary>Tiles of faces 4 and 5.</summary>
         public uint Layers45;
         /// <summary>A combination of the <c>Flag*</c> constants.</summary>
         public uint Flags;
@@ -63,7 +63,7 @@ namespace SpawnDev.VoxelEngine.Rendering
 
     /// <summary>
     /// Everything that changes per frame for <see cref="BlockRenderPipeline"/>: the camera, the sun, ambient light and fog.
-    /// 160 bytes, matches the WGSL <c>Frame</c> struct. The caller owns the lighting model (a day/night cycle, a dungeon): the
+    /// 176 bytes, matches the WGSL <c>Frame</c> struct. The caller owns the lighting model (a day/night cycle, a dungeon): the
     /// pipeline only applies the numbers.
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -83,7 +83,13 @@ namespace SpawnDev.VoxelEngine.Rendering
         public Vector4 FogColor;
         /// <summary>Fog starts at x and is complete at y (world units from the camera); the blend is quadratic.</summary>
         public Vector4 FogRange;
+        /// <summary>Seconds since some fixed moment (the viewer's start): animated textures play from it (20 ticks a second). Monotonic; precision is fine for days.</summary>
+        public float Time;
+        /// <summary>Filled in by <see cref="BlockRenderPipeline.BeginFrame"/> from the atlas in use: tiles per row of the atlas, and a tile's side in pixels. Callers leave them 0.</summary>
+        public float AtlasTilesPerRow;
+        public float AtlasTileSize;
+        private float _reserved;
 
-        public const int SizeInBytes = 160;
+        public const int SizeInBytes = 176;
     }
 }

@@ -1,5 +1,30 @@
 # SpawnDev.VoxelEngine Changelog
 
+## Unreleased (0.2.0-rc.3) - a texture ATLAS (no layer limit) and animated tiles
+
+AubsCraft's textures move from a hand-picked 80 to every block texture of the game (1,400+) with every frame of every animated one: several
+thousand tiles. A WebGPU texture ARRAY holds 256 layers unless the device asks for more, and the device is created by SpawnDev.ILGPU.
+
+### Changed (breaking within the RC; BlockRenderPipeline is new in 0.2.0)
+- **`BlockTextureAtlas` replaces `BlockTextureArray`.** One 2D texture, a grid of equal square tiles; a tile's number (row-major from the top-left) is
+  what a `BlockMaterial` face names, as a layer number was. `BlockTextureAtlas.FromRgba(device, queue, rgba, width, height, tileSize)` (a JS typed array
+  or a `byte[]`) uploads it as it is: no slicing, no copy into the .NET heap. The shader fetches texels exactly (`textureLoad`, no sampler) and
+  wraps the coordinate inside the tile itself, so a greedy-merged quad still tiles its texture once per block; there are no seams and no layer limit
+  (a 2D texture side of 8192 px holds 512 tiles of 16 px a side). Tile size comes from the atlas, not a constant.
+- `BlockFrameUniforms` is 176 bytes: `Time` (seconds), `AtlasTilesPerRow` and `AtlasTileSize` (filled in by the pipeline from the atlas in use).
+- Bindings of group 0: 3 = the atlas (2D), 4 = the animation table, 5 = the timelines (the sampler is gone).
+
+### Added
+- **Animated tiles.** `BlockRenderPipeline.SetAnimations(IReadOnlyList<TextureAnimation>)`: `TextureAnimation(BaseTile, int[] Timeline)` lists the tile to
+  show for each TICK (20 a second) of its loop; wherever a face names `BaseTile` the vertex shader draws `Timeline[tick % Timeline.Length]`, with
+  `tick = floor(BlockFrameUniforms.Time * 20)`. A frame that lasts several ticks, repeats or plays out of order is just a longer list, which covers
+  Minecraft's `.mcmeta` animations (frametime, frame lists) without the shader knowing about them. Setting a new atlas drops the animations.
+- Tests (WebGPU pixel readback): 512 tiles (twice what an array holds) all reachable; tile size from the atlas; an animated tile at ticks 0-4, 22 and
+  20000 shows the right frame while a static tile beside it never changes; bad timelines are rejected, a new atlas starts clean. The existing 24
+  render tests (upright unmirrored faces, merged-quad tiling, cutout, water, fog, section origins...) pass unchanged on the new shader. Seven
+  mutations (no modulo, wrong tick rate, wrong row math, no wrap, no zero check, a fixed tile size, no duplicate check) were each caught.
+
+
 ## 0.2.0-rc.2 (2026-10-15) - quad buffers shared by many meshes
 
 AubsCraft on an Intel UHD 620 laptop: 837 draws AND 837 buffer binds a frame (one quad buffer per column and pass), 17.6 ms of the 19.1 ms

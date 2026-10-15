@@ -5,14 +5,16 @@ namespace SpawnDev.VoxelEngine.Rendering
     /// <see cref="Meshing.PackedQuad"/> storage buffer.
     ///
     /// A quad is a w x h rectangle of one block type on one face. Its texture REPEATS across it (one texture tile per block), so a
-    /// greedy-merged 16x16 quad of grass shows the same 16x16 tile pattern as 256 single blocks would. That is why the textures
-    /// are a texture ARRAY with a repeating sampler and not an atlas: an atlas cannot tile a sub-rectangle.
+    /// greedy-merged 16x16 quad of grass shows the same 16x16 tile pattern as 256 single blocks would. The textures are one 2D ATLAS
+    /// (a grid of equal tiles) read with exact texel fetches: the shader wraps the coordinate inside the tile itself, so there is no
+    /// sampler, no seam between tiles, and none of a texture array's layer limit (WebGPU guarantees 256 layers; a game has thousands of
+    /// tiles). An ANIMATED tile is a timeline of tiles, one per tick (20 a second): the vertex shader swaps the tile by the frame's time.
     ///
     /// Faces 0..5 are the cube faces (+X -X +Z -Z +Y -Y); 6 and 7 are the two crossed planes of a plant, each a 1x1 block-high
     /// rectangle on a diagonal of the block's footprint. Every cube face is wound counter-clockwise seen from outside, and the
     /// texture is upright and unmirrored seen from outside (top and bottom faces: see the notes at each case).
     ///
-    /// Bindings: group 0 = frame uniforms, block materials, per-section origins, the texture array, its sampler; group 1 = the quads.
+    /// Bindings: group 0 = frame uniforms, block materials, per-section origins, the atlas, the animation table and timelines; group 1 = the quads.
     /// Draw (vertexCount = quads * 6, firstVertex = firstQuad * 6, firstInstance = section index): the instance index picks the
     /// section's origin, so one quad buffer holds many sections and no per-draw uniform is written.
     /// </summary>
@@ -32,6 +34,7 @@ struct Frame {
     ambient: vec4<f32>,    // rgb, w = fill light strength
     fogColor: vec4<f32>,
     fogRange: vec4<f32>,   // x = start, y = end
+    timeAtlas: vec4<f32>,  // x = seconds, y = atlas tiles per row, z = tile size in pixels
 };
 
 struct BlockMaterial {
@@ -45,8 +48,10 @@ struct BlockMaterial {
 @group(0) @binding(0) var<uniform> frame: Frame;
 @group(0) @binding(1) var<storage, read> materials: array<BlockMaterial>;
 @group(0) @binding(2) var<storage, read> sectionOrigins: array<vec4<f32>>;
-@group(0) @binding(3) var blockTextures: texture_2d_array<f32>;
-@group(0) @binding(4) var blockSampler: sampler;
+@group(0) @binding(3) var blockTextures: texture_2d<f32>;
+// Animated tiles: animTable[tile] = (offset into timeline, length), length 0 = not animated; timeline[offset + tick % length] = the tile shown
+@group(0) @binding(4) var<storage, read> animTable: array<vec2<u32>>;
+@group(0) @binding(5) var<storage, read> timeline: array<u32>;
 @group(1) @binding(0) var<storage, read> quads: array<vec2<u32>>;   // PackedQuad: i64 as (lo, hi)
 
 const NO_TEXTURE: u32 = 0xFFFFu;
@@ -175,7 +180,15 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     var packed = m.l0;
     if ((f >> 1u) == 1u) { packed = m.l1; }
     if ((f >> 1u) == 2u) { packed = m.l2; }
-    out.layer = (packed >> ((f & 1u) * 16u)) & 0xFFFFu;
+    var tile = (packed >> ((f & 1u) * 16u)) & 0xFFFFu;
+    // An animated tile plays through its timeline, one entry per tick (decided per vertex: all of a quad's vertices agree, it is flat)
+    if (tile != NO_TEXTURE) {
+        let anim = animTable[tile];
+        if (anim.y > 0u) {
+            tile = timeline[anim.x + (u32(frame.timeAtlas.x * 20.0) % anim.y)];
+        }
+    }
+    out.layer = tile;
 
     // Colour before the texture: the tint (when tinted, or when there is no texture to show), else white; times the face brightness
     var base = vec3<f32>(1.0, 1.0, 1.0);
@@ -191,6 +204,16 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     return out;
 }
 
+// One texel of an atlas tile, the tile repeating: uv is in blocks (0..w, 0..h across the quad), v counting DOWN the image
+fn blockTexel(tile: u32, uv: vec2<f32>) -> vec4<f32> {
+    let size = u32(frame.timeAtlas.z);
+    let perRow = u32(frame.timeAtlas.y);
+    let p = vec2<u32>(max(uv, vec2<f32>(0.0, 0.0)) * f32(size));
+    let x = (tile % perRow) * size + (p.x % size);
+    let y = (tile / perRow) * size + (p.y % size);
+    return textureLoad(blockTextures, vec2<i32>(i32(x), i32(y)), 0);
+}
+
 fn applyFog(color: vec3<f32>, worldPos: vec3<f32>) -> vec3<f32> {
     let dist = length(worldPos - frame.cameraPos.xyz);
     let range = max(frame.fogRange.y - frame.fogRange.x, 0.0001);
@@ -203,7 +226,7 @@ fn applyFog(color: vec3<f32>, worldPos: vec3<f32>) -> vec3<f32> {
 fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4<f32> {
     var color = in.vcolor;
     if (in.layer != NO_TEXTURE) {
-        let t = textureSampleLevel(blockTextures, blockSampler, in.uv, i32(in.layer), 0.0);
+        let t = blockTexel(in.layer, in.uv);
         if (t.a < 0.3) { discard; }
         color = color * t.xyz;
     }
@@ -228,7 +251,7 @@ fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) v
 fn fs_water(in: VOut) -> @location(0) vec4<f32> {
     var color = in.vcolor;
     if (in.layer != NO_TEXTURE) {
-        let t = textureSampleLevel(blockTextures, blockSampler, in.uv, i32(in.layer), 0.0);
+        let t = blockTexel(in.layer, in.uv);
         color = color * t.xyz;
     }
     let sunI = max(dot(in.normal, frame.sunDir.xyz), 0.0);

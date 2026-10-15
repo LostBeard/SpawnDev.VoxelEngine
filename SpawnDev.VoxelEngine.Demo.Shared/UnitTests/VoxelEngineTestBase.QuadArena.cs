@@ -239,7 +239,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 
             var eye = new Vector3(3f, 5f, 0.5f);
             var frame = BrNeutral(BrView(eye, new Vector3(3f, 1f, 0.5f), -Vector3.UnitZ) * BrProj90, eye);
-            using var textures = BlockTextureArray.FromAtlas(device, queue, BrAtlas(), 32, 32, BrTile);
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, BrAtlas(), 32, 32, BrTile);
             using var pipeline = new BlockRenderPipeline();
             pipeline.Init(device, queue, "bgra8unorm", maxSections: 16);
             pipeline.SetTextures(textures);
