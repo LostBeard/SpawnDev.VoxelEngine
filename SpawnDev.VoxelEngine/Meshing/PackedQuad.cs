@@ -17,11 +17,18 @@ namespace SpawnDev.VoxelEngine.Meshing
     ///   [23:34] block type (12 bits, 0-4095, matches PackedBlock.TypeMask)
     ///   [35:38] damage level (4 bits, 0-15, matches PackedBlock.DamageMask)
     ///   [39:46] per-vertex AO (8 bits: 4 corners x 2 bits each, 0-3)
-    ///   [47:63] reserved (17 bits)
+    ///   [47:51] section index (5 bits, 0-31): which 16-high section of its column the quad sits in. 0 unless a mesher was told to embed it
+    ///           (<c>EmbedSectionIndex</c>); the renderer adds sectionIndex * 16 to the quad's Y, so ONE draw can cover a whole column
+    ///           instead of one per section
+    ///   [52:63] reserved (12 bits)
     /// </summary>
     public static class PackedQuad
     {
-        public static long Pack(int x, int y, int z, int width, int height, int face, int blockType, int damage = 0, int ao = 0)
+        /// <summary>Bit position of the embedded section index.</summary>
+        public const int SectionIndexShift = 47;
+        public const int SectionIndexMask = 0x1F;
+
+        public static long Pack(int x, int y, int z, int width, int height, int face, int blockType, int damage = 0, int ao = 0, int sectionIndex = 0)
         {
             return (long)(x & 0xF)
                 | ((long)(y & 0xF) << 4)
@@ -31,8 +38,16 @@ namespace SpawnDev.VoxelEngine.Meshing
                 | ((long)(face & 0x7) << 20)
                 | ((long)(blockType & 0xFFF) << 23)
                 | ((long)(damage & 0xF) << 35)
-                | ((long)(ao & 0xFF) << 39);
+                | ((long)(ao & 0xFF) << 39)
+                | ((long)(sectionIndex & SectionIndexMask) << SectionIndexShift);
         }
+
+        /// <summary>The section index embedded in a quad (0 when none was).</summary>
+        public static int UnpackSectionIndex(long packed) => (int)((packed >> SectionIndexShift) & SectionIndexMask);
+
+        /// <summary>The same quad with its section index set (replacing any embedded one).</summary>
+        public static long WithSectionIndex(long packed, int sectionIndex)
+            => (packed & ~((long)SectionIndexMask << SectionIndexShift)) | ((long)(sectionIndex & SectionIndexMask) << SectionIndexShift);
 
         public static void Unpack(long packed, out int x, out int y, out int z,
             out int width, out int height, out int face, out int blockType)

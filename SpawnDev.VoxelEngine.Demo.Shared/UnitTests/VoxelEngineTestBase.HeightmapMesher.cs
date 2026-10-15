@@ -294,5 +294,32 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             CmAssertSame(opaque, await CmDecode(mesh.Opaque, "opaque"), "JS-uploaded heightmap / opaque");
             CmAssertSame(water, await CmDecode(mesh.Water, "water"), "JS-uploaded heightmap / water");
         });
-    }
+
+        [TestMethod]
+        public async Task HeightmapMesher_EmbedSectionIndex_EveryQuadCarriesItsSection_AndTheFacesAreUnchangedTest() => await RunTest(async accelerator =>
+        {
+            CmRequireGpuMeshing(accelerator);
+            var map = HmTerrain(5);
+            foreach (bool embed in new[] { false, true })
+            {
+                using var mesher = new HeightmapMesher(accelerator, 24) { SeabedTypeOffset = HmSeabedOffset, EmbedSectionIndex = embed };
+                mesher.SetBlockClasses(CmFlags);
+                using var gpu = HmUpload(accelerator, map);
+                using var mesh = await mesher.MeshAsync(gpu);
+                foreach (var (list, name) in new[] { (mesh.Opaque, "opaque"), (mesh.Water, "water") })
+                {
+                    if (list.Buffer == null) throw new Exception($"{name}: the terrain has quads in this pass");
+                    var quads = await list.Buffer.CopyToHostAsync();
+                    for (int s = 0; s < 24; s++)
+                        for (int q = list.SectionStart[s]; q < list.SectionStart[s + 1]; q++)
+                        {
+                            int index = PackedQuad.UnpackSectionIndex(quads[q]);
+                            if (index != (embed ? s : 0)) throw new Exception($"embed={embed}: a {name} quad of section {s} carries section index {index}");
+                        }
+                }
+                var (opaque, water) = HmExpected(map, new HmMap?[4], HmSeabedOffset);
+                CmAssertSame(opaque, await CmDecode(mesh.Opaque, "opaque"), $"embed={embed} / opaque");
+                CmAssertSame(water, await CmDecode(mesh.Water, "water"), $"embed={embed} / water");
+            }
+        });    }
 }

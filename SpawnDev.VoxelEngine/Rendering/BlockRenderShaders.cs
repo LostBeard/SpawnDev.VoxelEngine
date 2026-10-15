@@ -85,6 +85,8 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     let qh = f32(((lo >> 16u) & 0xFu) + 1u);
     let face = (lo >> 20u) & 0x7u;
     let blockType = ((lo >> 23u) & 0x1FFu) | ((hi & 0x7u) << 9u);
+    // Bits 47-51: the section the quad sits in, within its column (0 when the mesher did not embed it)
+    let sectionY = f32((hi >> 15u) & 0x1Fu);
 
     let a = f32(corner >> 1u);
     let b = f32(corner & 1u);
@@ -154,6 +156,7 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     }
 
     var local = origin + axisA * a + axisB * b;
+    local.y = local.y + sectionY * 16.0;
     let m = materials[blockType];
     if (face == 4u && (m.flags & FLAG_LOWER_TOP) != 0u) {
         local.y = local.y - 0.1; // a water surface sits a tenth below the block's top

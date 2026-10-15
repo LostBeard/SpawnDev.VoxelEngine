@@ -25,7 +25,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         private readonly int _sections;
 
         private readonly Action<Index1D, ArrayView<int>, ArrayView<int>, ArrayView<long>, ArrayView<long>, ArrayView<int>, int, int, int> _mesh;
-        private readonly Action<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int> _compact;
+        private readonly Action<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int, int> _compact;
 
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _typeFlags;
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _hood;
@@ -38,6 +38,9 @@ namespace SpawnDev.VoxelEngine.Meshing
 
         public int SectionCount => _sections;
 
+        /// <summary>See <see cref="ColumnMesher.EmbedSectionIndex"/>: one draw per chunk instead of one per section.</summary>
+        public bool EmbedSectionIndex { get; set; }
+
         public HeightmapMesher(Accelerator accelerator, int sectionCount = 24)
         {
             if (sectionCount < 1) throw new ArgumentOutOfRangeException(nameof(sectionCount));
@@ -46,7 +49,7 @@ namespace SpawnDev.VoxelEngine.Meshing
 
             _mesh = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ArrayView<int>, ArrayView<long>, ArrayView<long>,
                 ArrayView<int>, int, int, int>(HeightmapMeshKernels.HeightmapKernel);
-            _compact = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int>(
+            _compact = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int, int>(
                 HeightmapMeshKernels.CompactKernel);
 
             _typeFlags = accelerator.Allocate1D<int>(PackedBlock.MaxBlockTypes);
@@ -134,7 +137,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             var output = _accelerator.Allocate1D<long>(total);
             sectionStartBuffer.CopyFromCPU(start.AsSpan(0, _sections).ToArray());
             _compact((Index1D)(_sections * HeightmapMeshKernels.ScratchQuadsPerSection),
-                scratch.View, _counters.View.SubView(offset, _sections), sectionStartBuffer.View, output.View, _sections);
+                scratch.View, _counters.View.SubView(offset, _sections), sectionStartBuffer.View, output.View, _sections, EmbedSectionIndex ? 1 : 0);
             return new ColumnMesh.QuadList(output, total, start);
         }
 

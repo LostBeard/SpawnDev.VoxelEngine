@@ -251,10 +251,27 @@ namespace SpawnDev.VoxelEngine.Rendering
         public void BindPass(GPURenderPassEncoder pass, Pass kind, GPUBuffer quadBuffer)
         {
             if (_frameBindGroup == null) throw new InvalidOperationException("Call Init first");
-            pass.SetPipeline(kind switch { Pass.Opaque => _opaque!, Pass.Cross => _cross!, _ => _water! });
-            pass.SetBindGroup(0, _frameBindGroup);
-            pass.SetBindGroup(1, GetQuadBindGroup(quadBuffer));
+            // A call into the browser costs about as much as the GPU work of a small draw: set only what changed since the last bind on
+            // this pass (the pipeline and the frame group when the kind changes, the quad group when the buffer does)
+            if (!ReferenceEquals(pass, _lastPass) || kind != _lastKind)
+            {
+                pass.SetPipeline(kind switch { Pass.Opaque => _opaque!, Pass.Cross => _cross!, _ => _water! });
+                pass.SetBindGroup(0, _frameBindGroup);
+                _lastPass = pass;
+                _lastKind = kind;
+                _lastQuadBuffer = null;
+            }
+            if (!ReferenceEquals(quadBuffer, _lastQuadBuffer))
+            {
+                pass.SetBindGroup(1, GetQuadBindGroup(quadBuffer));
+                _lastQuadBuffer = quadBuffer;
+            }
         }
+
+        // What BindPass last set on which pass (so it can skip repeats)
+        private GPURenderPassEncoder? _lastPass;
+        private Pass _lastKind;
+        private GPUBuffer? _lastQuadBuffer;
 
         /// <summary>
         /// Draw <paramref name="quadCount"/> quads starting at quad <paramref name="firstQuad"/> of the bound buffer, placed at section
@@ -284,6 +301,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// </summary>
         public void ReleaseQuadBuffer(GPUBuffer quadBuffer)
         {
+            if (ReferenceEquals(quadBuffer, _lastQuadBuffer)) _lastQuadBuffer = null;
             if (_quadBindGroups.Remove(quadBuffer, out var group)) group.Dispose();
         }
 
@@ -292,6 +310,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         {
             foreach (var g in _quadBindGroups.Values) g.Dispose();
             _quadBindGroups.Clear();
+            _lastQuadBuffer = null;
         }
 
         public void Dispose()

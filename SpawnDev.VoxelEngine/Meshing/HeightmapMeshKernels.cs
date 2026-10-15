@@ -101,14 +101,17 @@ namespace SpawnDev.VoxelEngine.Meshing
             ArrayView<int> counters,
             ArrayView<int> sectionStart,
             ArrayView<long> output,
-            int sectionCount)
+            int sectionCount,
+            int embedSectionIndex)
         {
             int total = sectionCount * ScratchQuadsPerSection;
             if (index >= total) return;
             int s = index / ScratchQuadsPerSection;
             int i = index - s * ScratchQuadsPerSection;
             if (i >= counters[s]) return;
-            output[sectionStart[s] + i] = scratch[index];
+            long quad = scratch[index];
+            if (embedSectionIndex != 0) quad = PackedQuad.WithSectionIndex(quad, s);
+            output[sectionStart[s] + i] = quad;
         }
 
         private static bool IsWater(int flags) => (flags & BlockClass.EmitWater) != 0 && (flags & BlockClass.EmitOpaque) == 0;

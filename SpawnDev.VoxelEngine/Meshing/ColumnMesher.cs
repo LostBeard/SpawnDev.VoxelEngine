@@ -80,7 +80,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         private readonly Action<Index1D, ArrayView<long>, ArrayView<long>, ArrayView<long>, int> _faceCull;
         private readonly Action<Index1D, ArrayView<long>, ArrayView<ushort>, ArrayView<long>, ArrayView<int>, int, int> _merge;
         private readonly Action<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int> _plants;
-        private readonly Action<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int> _compact;
+        private readonly Action<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int, int> _compact;
 
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _typeFlags;
         private readonly MemoryBuffer1D<long, Stride1D.Dense> _emit, _occlude, _faceMasks;
@@ -95,6 +95,13 @@ namespace SpawnDev.VoxelEngine.Meshing
 
         /// <summary>Whether a missing neighbour column hides faces toward it (true) or leaves them visible (false).</summary>
         public bool MissingNeighborsAreSolid { get; set; } = true;
+
+        /// <summary>
+        /// Write each quad's section index into the quad itself (<see cref="PackedQuad"/> bits 47-51), so the renderer can draw a whole column
+        /// with ONE call, the quad's Y carrying the section's height (the shader adds sectionIndex * 16). Off (the default): quads are
+        /// section-local and a draw per section places them by section origin, as before.
+        /// </summary>
+        public bool EmbedSectionIndex { get; set; }
 
         public ColumnMesher(Accelerator accelerator, int sectionCount = 24)
         {
@@ -112,7 +119,7 @@ namespace SpawnDev.VoxelEngine.Meshing
                 ColumnMeshKernels.GreedyMergeKernel);
             _plants = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int>(
                 ColumnMeshKernels.PlantKernel);
-            _compact = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int>(
+            _compact = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int, int>(
                 ColumnMeshKernels.CompactKernel);
 
             _typeFlags = accelerator.Allocate1D<int>(PackedBlock.MaxBlockTypes);
@@ -238,7 +245,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             var output = _accelerator.Allocate1D<long>(total);
             sectionStartBuffer.CopyFromCPU(start.AsSpan(0, _sections).ToArray());
             _compact((Index1D)(_sections * ColumnMeshKernels.ScratchQuadsPerSection),
-                scratch.View, _counters.View.SubView(offset, _sections), sectionStartBuffer.View, output.View, _sections);
+                scratch.View, _counters.View.SubView(offset, _sections), sectionStartBuffer.View, output.View, _sections, EmbedSectionIndex ? 1 : 0);
             return new ColumnMesh.QuadList(output, total, start);
         }
 

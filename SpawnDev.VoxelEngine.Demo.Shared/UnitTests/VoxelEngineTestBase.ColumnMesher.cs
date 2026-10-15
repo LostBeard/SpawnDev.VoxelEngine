@@ -442,5 +442,60 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             CmAssertSame(CmExpectedCubeFaces(ids, new ushort[]?[4], sections, BlockClass.OpaqueShift, true), await CmDecode(mesh.Opaque, "opaque"), "JS-uploaded column / opaque");
             CmAssertSame(CmExpectedPlants(ids, sections), await CmDecode(mesh.Plants, "plants"), "JS-uploaded column / plants");
         });
-    }
+
+        // =====================================================================
+        // The section index inside the quad (one draw per column instead of one per section)
+        // =====================================================================
+
+        [TestMethod]
+        public void PackedQuad_SectionIndex_RoundTripsAndNeverDisturbsTheOtherFields()
+        {
+            for (int s = 0; s < 32; s++)
+            {
+                long q = PackedQuad.Pack(3, 5, 7, 4, 2, 4, 1234, damage: 9, ao: 0xA5, sectionIndex: s);
+                if (PackedQuad.UnpackSectionIndex(q) != s) throw new Exception($"section {s} came back as {PackedQuad.UnpackSectionIndex(q)}");
+                PackedQuad.UnpackFull(q, out int x, out int y, out int z, out int w, out int h, out int face, out int type, out int damage, out int ao);
+                if ((x, y, z, w, h, face, type, damage, ao) != (3, 5, 7, 4, 2, 4, 1234, 9, 0xA5))
+                    throw new Exception($"section {s} disturbed another field: {(x, y, z, w, h, face, type, damage, ao)}");
+            }
+            // Replacing an embedded index, and the default of none
+            long a = PackedQuad.Pack(1, 2, 3, 1, 1, 0, 7);
+            if (PackedQuad.UnpackSectionIndex(a) != 0) throw new Exception("a quad packed without a section index has index 0");
+            long b = PackedQuad.WithSectionIndex(PackedQuad.WithSectionIndex(a, 20), 3);
+            if (PackedQuad.UnpackSectionIndex(b) != 3) throw new Exception("WithSectionIndex must replace the previous index");
+            PackedQuad.Unpack(b, out int bx, out int by, out int bz, out _, out _, out int bf, out int bt);
+            if ((bx, by, bz, bf, bt) != (1, 2, 3, 0, 7)) throw new Exception("WithSectionIndex must leave the rest of the quad alone");
+        }
+
+        [TestMethod]
+        public async Task ColumnMesher_EmbedSectionIndex_EveryQuadCarriesItsSection_AndTheFacesAreUnchangedTest() => await RunTest(async accelerator =>
+        {
+            CmRequireGpuMeshing(accelerator);
+            const int sections = 6;
+            var col = CmTerrain(sections, 11);
+            foreach (bool embed in new[] { false, true })
+            {
+                using var mesher = new ColumnMesher(accelerator, sections) { EmbedSectionIndex = embed };
+                mesher.SetBlockClasses(CmFlags);
+                using var gpu = CmUpload(accelerator, col);
+                using var mesh = await mesher.MeshAsync(gpu);
+                if (mesh.Overflow != 0) throw new Exception("overflow");
+                foreach (var (list, name) in new[] { (mesh.Opaque, "opaque"), (mesh.Plants, "plants"), (mesh.Water, "water") })
+                {
+                    if (list.Buffer == null) continue;
+                    var quads = await list.Buffer.CopyToHostAsync();
+                    int seen = 0;
+                    for (int s = 0; s < sections; s++)
+                        for (int q = list.SectionStart[s]; q < list.SectionStart[s + 1]; q++, seen++)
+                        {
+                            int index = PackedQuad.UnpackSectionIndex(quads[q]);
+                            int want = embed ? s : 0;
+                            if (index != want) throw new Exception($"embed={embed}: a {name} quad of section {s} carries section index {index}, expected {want}");
+                        }
+                    if (seen == 0) throw new Exception($"{name}: no quads were checked");
+                }
+                // The embedded bits change nothing about which faces are drawn
+                await CmMeshAndVerify(accelerator, mesher, col, new ushort[]?[4], sections, $"embed={embed}");
+            }
+        });    }
 }

@@ -580,5 +580,83 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             catch (ArgumentException) { threw = true; }
             if (!threw) throw new Exception("A 30x32 atlas of 16px tiles must be rejected");
         }
-    }
+
+        // =====================================================================
+        // One draw for a whole column: the quad carries its section, the shader lifts it
+        // =====================================================================
+
+        [TestMethod]
+        public async Task BlockRender_EmbeddedSectionIndex_LiftsTheQuadSixteenBlocksPerSectionTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            var materials = new BlockMaterial[2];
+            materials[1] = BlockMaterial.Uniform(BrLayerCyan);
+            // One +X face of the block at the origin; the camera sits 16 blocks up (section 1) at the same X offset, looking at that height
+            var eye = new Vector3(1.5f, 16.5f, 0.5f);
+            var frame = BrNeutral(BrView(eye, new Vector3(1f, 16.5f, 0.5f), Vector3.UnitY) * BrProj90, eye);
+            float f = 255f * BrFaceFactor(0);
+
+            var lifted = await BrRender(device, queue, materials,
+                new[] { new BrDraw { Quads = new[] { PackedQuad.Pack(0, 0, 0, 1, 1, 0, 1, sectionIndex: 1) } } }, frame, Vector3.Zero);
+            BrExpect(lifted, 64, 32, 32, 0, f, f, "a quad of section 1 is drawn 16 blocks up");
+
+            var notLifted = await BrRender(device, queue, materials,
+                new[] { new BrDraw { Quads = new[] { PackedQuad.Pack(0, 0, 0, 1, 1, 0, 1) } } }, frame, Vector3.Zero);
+            BrExpect(notLifted, 64, 32, 32, 0, 0, 0, "the same quad without a section index stays at the origin: nothing here");
+        });
+
+        [TestMethod]
+        public async Task BlockRender_BindPass_SkipsRepeats_ButNeverSkipsAChangeTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            var materials = new BlockMaterial[3];
+            materials[1] = BlockMaterial.Uniform(BrLayerCyan);
+            materials[2] = BlockMaterial.Uniform(BrLayerOrange, alpha: 1f);
+
+            using var textures = BlockTextureArray.FromAtlas(device, queue, BrAtlas(), 32, 32, BrTile);
+            using var pipeline = new BlockRenderPipeline();
+            pipeline.Init(device, queue, "bgra8unorm", maxSections: 16);
+            pipeline.SetTextures(textures);
+            pipeline.SetMaterials(materials);
+            pipeline.SetSectionOrigins(0, new[] { Vector3.Zero, new Vector3(0, 0, 0) });
+
+            // Three blocks side by side along +Z seen from +X: cyan (opaque pass, buffer A), orange (cross pass? no: water pass, buffer B),
+            // cyan again (opaque pass, buffer A again, after the pass changed twice). All three must show.
+            var eye = new Vector3(3f, 0.5f, 1.5f);
+            pipeline.BeginFrame(BrNeutral(BrView(eye, new Vector3(1f, 0.5f, 1.5f), Vector3.UnitY) * BrProj90, eye));
+
+            var bufferA = CreateQuadBuffer(device, queue, new[]
+            {
+                PackedQuad.Pack(0, 0, 0, 1, 1, 0, 1),   // z 0
+                PackedQuad.Pack(0, 0, 2, 1, 1, 0, 1),   // z 2
+            });
+            var bufferB = CreateQuadBuffer(device, queue, new[] { PackedQuad.Pack(0, 0, 1, 1, 1, 0, 2) }); // z 1, type 2 (orange)
+            var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 96, 32);
+            try
+            {
+                using var encoder = device.CreateCommandEncoder();
+                using var pass = pipeline.BeginRenderPass(encoder, colorView, depthView, Vector3.Zero);
+                pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, bufferA);
+                pipeline.Draw(pass, 0, 1, 0);
+                pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, bufferA);   // an exact repeat: skipped inside
+                pipeline.BindPass(pass, BlockRenderPipeline.Pass.Water, bufferB);    // pass and buffer change
+                pipeline.Draw(pass, 0, 1, 0);
+                pipeline.BindPass(pass, BlockRenderPipeline.Pass.Opaque, bufferA);   // back to the first pass and buffer
+                pipeline.Draw(pass, 1, 1, 0);
+                pass.End();
+                using var cmd = encoder.Finish();
+                queue.Submit(new[] { cmd });
+                await queue.OnSubmittedWorkDone();
+                var pixels = await ReadBackPixels(device, queue, colorTex, 96, 32);
+                // A 90 degree view of 96 px at distance 2 is 24 px per block: seen from +X the screen right is -Z, so z=0 is at x 72, z=1 at 48, z=2 at 24
+                var c = BrFaceFactor(0) * 255f;
+                BrExpect(pixels, 96, 72, 16, 0, c, c, "z=0: cyan from the first opaque draw");
+                BrExpect(pixels, 96, 48, 16, 255, 128, 0, "z=1: orange from the water-pass draw (full alpha, the water pass has no per-face shade)", tolerance: 12);
+                BrExpect(pixels, 96, 24, 16, 0, c, c, "z=2: cyan from the opaque draw after two changes");
+            }
+            finally
+            {
+                pipeline.ReleaseQuadBuffer(bufferA); pipeline.ReleaseQuadBuffer(bufferB);
+                bufferA.Destroy(); bufferA.Dispose(); bufferB.Destroy(); bufferB.Dispose();
+                DisposeTargets(colorTex, depthTex, colorView, depthView);
+            }
+        });    }
 }
