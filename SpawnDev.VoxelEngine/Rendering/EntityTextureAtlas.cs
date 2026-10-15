@@ -32,7 +32,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             {
                 Size = new[] { width, height },
                 Format = "rgba8unorm",
-                Usage = GPUTextureUsage.TextureBinding | GPUTextureUsage.CopyDst,
+                Usage = GPUTextureUsage.TextureBinding | GPUTextureUsage.CopyDst | GPUTextureUsage.RenderAttachment,   // RenderAttachment: copyExternalImageToTexture needs it
             });
             return new EntityTextureAtlas(queue, texture, width, height);
         }
@@ -73,6 +73,20 @@ namespace SpawnDev.VoxelEngine.Rendering
             if ((long)width * height * 4 != rgba.Length) throw new ArgumentException($"{rgba.Length} bytes is not a {width}x{height} RGBA image");
             using var js = new Uint8Array(rgba);
             WriteRegion(x, y, width, height, js);
+        }
+
+        /// <summary>
+        /// Draw an <see cref="OffscreenCanvas"/> into the atlas at (x, y): its whole size, GPU to GPU where the browser can (a skin decoded and composed in
+        /// a canvas never touches the .NET heap). Straight (not premultiplied) alpha, top row first.
+        /// </summary>
+        public void WriteCanvas(int x, int y, OffscreenCanvas canvas)
+        {
+            int width = canvas.Width, height = canvas.Height;
+            CheckRegion(x, y, width, height);
+            _queue.CopyExternalImageToTexture(
+                new GPUCopyExternalImageSourceInfo { Source = canvas },
+                new GPUCopyExternalImageDestInfo { Texture = Texture, Origin = new GPUOrigin3DDict { X = (uint)x, Y = (uint)y }, PremultipliedAlpha = false },
+                new GPUExtent3DDict { Width = (uint)width, Height = (uint)height });
         }
 
         private void CheckRegion(int x, int y, int width, int height)

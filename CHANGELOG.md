@@ -11,9 +11,11 @@
   Overlay layers (a hat, a coat, wool) inflate the geometry, not the texture lookup. Alpha under 0.1 is discarded; a tint multiplies the texture.
 - **`EntityTextureAtlas`**: one 2D texture of any mix of image sizes packed by the caller, read with exact texels in atlas pixels (no table of sizes on the
   GPU); `WriteRegion` rewrites a rectangle while the atlas is in use (a player's skin arriving).
+- `EntityTextureAtlas.WriteCanvas(x, y, OffscreenCanvas)` draws a canvas into the atlas (GPU to GPU where the browser can): a skin decoded and composed in a canvas never
+  touches the .NET heap. The atlas texture now carries `RenderAttachment` (copyExternalImageToTexture needs it). Test: a region rewritten while in use, a canvas that does not fit refused.
 - `BlockRenderPipeline.FrameBuffer`: the frame uniforms other pipelines share. The entity pipeline reads the SAME buffer, so a creature is lit and fogged exactly
   like the ground it stands on. Draw it inside the block pass, after the opaque and plant passes and before the water.
-- Tests (WebGPU pixel readback, 11): each face of a box shows its own region of the cross layout; a mirrored box swaps the side regions; every side reads left to
+- Tests (WebGPU pixel readback, 12): each face of a box shows its own region of the cross layout; a mirrored box swaps the side regions; every side reads left to
   right and upright seen from outside; the top runs its texture frontward; tint, transparency, inflation, depth order across instances, fog, face shading, buffer
   growth. Eleven mutations (a flipped u, a flipped top v, no mirror swap, no inflation, no tint, no discard, one instance, no depth write, no fog, a flipped back u, no face
   shading) were each caught.

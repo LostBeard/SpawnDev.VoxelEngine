@@ -263,6 +263,52 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         });
 
         [TestMethod]
+        public async Task EntityRender_AtlasRegions_CanBeRewrittenFromACanvas_WhileTheAtlasIsInUseTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            // The back region (48, 16) starts green; a 16 x 16 canvas drawn red then replaces it (a skin arriving)
+            var atlas = ErRegionAtlas();
+            ErPaint(atlas, 64, 48, 16, 16, 16, 0, 255, 0);
+            using var textures = EntityTextureAtlas.FromRgba(device, queue, atlas, 64, 32);
+            using var blocks = new BlockRenderPipeline();
+            blocks.Init(device, queue, "bgra8unorm", maxSections: 4);
+            using var entities = new EntityRenderPipeline();
+            entities.Init(device, queue, "bgra8unorm", blocks.FrameBuffer);
+            entities.SetTextures(textures);
+            entities.SetParts(new[] { ErBlockBox() });
+            var c = new Vector3(0.5f, 0.5f, 0.5f);
+            var eye = c + new Vector3(0, 0, 1.2f);   // seen from the back
+
+            async Task<string> Centre()
+            {
+                blocks.BeginFrame(BrNeutral(BrView(eye, c, -Vector3.UnitY) * BrProj90, eye));
+                var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 64, 64);
+                try
+                {
+                    using var encoder = device.CreateCommandEncoder();
+                    using (var pass = blocks.BeginRenderPass(encoder, colorView, depthView, Vector3.Zero)) { entities.Draw(pass); pass.End(); }
+                    using var cmd = encoder.Finish();
+                    queue.Submit(new[] { cmd });
+                    await queue.OnSubmittedWorkDone();
+                    return ErHue(GetPixel(await ReadBackPixels(device, queue, colorTex, 64, 64), 64, 32, 32));
+                }
+                finally { DisposeTargets(colorTex, depthTex, colorView, depthView); }
+            }
+
+            var before = await Centre();
+            if (before != "G") throw new Exception($"before the rewrite the back is {before}, expected G");
+            using var canvas = new OffscreenCanvas(16, 16);
+            using var ctx = canvas.Get2DContext();
+            ctx.FillStyle = "rgb(255,0,0)";
+            ctx.FillRect(0, 0, 16, 16);
+            textures.WriteCanvas(48, 16, canvas);
+            var after = await Centre();
+            if (after != "R") throw new Exception($"after the rewrite the back is {after}, expected R");
+            bool threw = false;
+            try { textures.WriteCanvas(56, 0, canvas); } catch (ArgumentOutOfRangeException) { threw = true; }
+            if (!threw) throw new Exception("a canvas that does not fit the atlas was accepted");
+        });
+
+        [TestMethod]
         public async Task EntityRender_MorePartsThanTheBufferHolds_GrowsIt_AndDrawsThemAllTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
         {
             var atlas = ErRegionAtlas();
