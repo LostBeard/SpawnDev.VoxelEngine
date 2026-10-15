@@ -1,6 +1,6 @@
 # SpawnDev.VoxelEngine Changelog
 
-## Unreleased - the ENTITY pipeline: creatures drawn as textured model boxes, in one instanced draw
+## 0.2.0-rc.4 (2026-10-15) - the ENTITY pipeline: creatures drawn as textured model boxes, in one instanced draw
 
 ### Added
 - **`EntityRenderPipeline`** draws every part of every model of a world in ONE instanced draw (36 vertices an instance: the shader expands a box).
