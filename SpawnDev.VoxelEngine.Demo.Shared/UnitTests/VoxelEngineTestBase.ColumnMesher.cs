@@ -25,8 +25,9 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             BlockClass.Cross,   // plant
             BlockClass.Cutout,  // glass
             BlockClass.EmitOpaque | BlockClass.OccludeOpaque | BlockClass.EmitWater | BlockClass.OccludeWater, // a custom class drawn in both passes
+            BlockClass.Plant | BlockClass.Water, // a plant standing in a cell of water (seagrass, kelp)
         };
-        private const ushort CmBoth = 8;
+        private const ushort CmBoth = 8, CmWaterPlant = 9;
 
         private const int CmXZ = 16;
 
@@ -201,6 +202,34 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             mesher.MissingNeighborsAreSolid = true;
             using var closed = await mesher.MeshAsync(gpu);
             if (closed.Opaque.Count != 2) throw new Exception($"With solid missing neighbours the slab has 2 quads (top, bottom), got {closed.Opaque.Count}");
+        });
+
+        [TestMethod]
+        public async Task ColumnMesher_APlantInWater_KeepsTheWaterSurfaceAndDrawsItsPlantTest() => await RunTest(async accelerator =>
+        {
+            CmRequireGpuMeshing(accelerator);
+            const int sections = 2;
+            using var mesher = new ColumnMesher(accelerator, sections) { MissingNeighborsAreSolid = true };
+            mesher.SetBlockClasses(CmFlags);
+            var col = CmEmpty(sections);
+            // A pool: stone floor at y 4, water from y 5 to 7, the whole column; seagrass stands in the top water layer at (8, 7, 8) and in the layer below at (3, 6, 3)
+            for (int z = 0; z < CmXZ; z++)
+                for (int x = 0; x < CmXZ; x++)
+                {
+                    col[CmIdx(x, 4, z)] = CmStone;
+                    for (int y = 5; y <= 7; y++) col[CmIdx(x, y, z)] = CmWater;
+                }
+            col[CmIdx(8, 7, 8)] = CmWaterPlant;
+            col[CmIdx(3, 6, 3)] = CmWaterPlant;
+
+            using var gpu = CmUpload(accelerator, col);
+            using var mesh = await mesher.MeshAsync(gpu);
+            // The plants: two crossed planes each
+            if (mesh.Plants.Count != 4) throw new Exception($"Two plants are 4 quads, got {mesh.Plants.Count}");
+            var water = await CmDecode(mesh.Water, "water");
+            // The water surface is unbroken over the plant at (8, 7, 8): its top face is there, the plant's cell is water like its neighbours
+            if (!water.Contains(new CmFace(4, 8, 7, 8, CmWaterPlant))) throw new Exception("The water surface over a plant in the top layer is missing");
+            await CmMeshAndVerify(accelerator, mesher, col, new ushort[]?[4], sections, "plants in water");
         });
 
         [TestMethod]

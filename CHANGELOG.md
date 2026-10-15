@@ -1,5 +1,16 @@
 # SpawnDev.VoxelEngine Changelog
 
+## Unreleased - thin blocks, plants that stand in water
+
+### Added
+- **`BlockMaterial.Thickness(sixteenths)`** (flag bits 9..12): a thin block - a carpet, rail, pressure plate, snow layer, closed trapdoor - is the cube squashed to n/16 of its
+  height from its floor, tops and sides, the sides showing the top strip of their texture rather than the whole tile squeezed. Pair it with a class that hides nothing
+  (`BlockClass.Cutout`) so what is beside and below still shows. Test: the middle of a 4/16 block is empty, just above its floor is solid, the side shows the tile's top rows;
+  three mutations (no squash, no side-strip UV) caught.
+- **`BlockMaterial.FlagPlantFromBottom`**: a plant's crossed planes take face 5's tile and tint instead of face 0's, so a block can be water on faces 0..4 and a plant on face 5 -
+  seagrass and kelp, which stand in a cell of water. With class `BlockClass.Plant | BlockClass.Water` the mesher already draws the water surface and the plant together
+  (new mesher test: the surface over a plant in the top layer is there; plants 4 quads). Test: the plant shows face 5's tile, cube faces keep theirs, no flag = face 0; mutations caught.
+
 ## 0.2.0-rc.4 (2026-10-15) - the ENTITY pipeline: creatures drawn as textured model boxes, in one instanced draw
 
 ### Added

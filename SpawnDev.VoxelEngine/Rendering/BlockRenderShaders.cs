@@ -59,6 +59,7 @@ const FLAG_TINTED: u32 = 1u;
 const FLAG_LOWER_TOP: u32 = 2u;
 const FLAG_FLAT_SHADING: u32 = 4u;
 const FLAG_DARKEN: u32 = 8u;
+const FLAG_PLANT_BOTTOM: u32 = 256u;   // plants take face 5's tile and tint (a plant standing in water)
 
 // Two triangles per quad from four corners: (0,1,2) and (1,3,2). corner = a*2 + b: a runs along the quad's A axis, b along its B axis.
 const cornerOrder = array<u32, 6>(0u, 1u, 2u, 1u, 3u, 2u);
@@ -164,6 +165,14 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     var local = origin + axisA * a + axisB * b;
     local.y = local.y + sectionY * 16.0;
     let m = materials[blockType];
+    // A thin block (carpet, rail, plate, snow layer): squashed toward its floor; the sides show the top strip of their texture, not the whole tile squeezed
+    let thick = (m.flags >> 9u) & 15u;
+    if (thick != 0u && face < 6u) {
+        let floorY = qy + sectionY * 16.0;
+        let t = f32(thick) / 16.0;
+        local.y = floorY + (local.y - floorY) * t;
+        if (face < 4u) { uv.y = uv.y * t; }
+    }
     if (face == 4u && (m.flags & FLAG_LOWER_TOP) != 0u) {
         local.y = local.y - 0.1; // a water surface sits a tenth below the block's top
     }
@@ -177,7 +186,7 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
 
     // This face's texture layer (a plant uses face 0's)
     var f = face;
-    if (f > 5u) { f = 0u; }
+    if (f > 5u) { f = select(0u, 5u, (m.flags & FLAG_PLANT_BOTTOM) != 0u); }
     var packed = m.l0;
     if ((f >> 1u) == 1u) { packed = m.l1; }
     if ((f >> 1u) == 2u) { packed = m.l2; }

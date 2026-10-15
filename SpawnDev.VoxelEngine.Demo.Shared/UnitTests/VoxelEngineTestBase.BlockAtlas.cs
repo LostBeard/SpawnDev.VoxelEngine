@@ -158,6 +158,78 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             }
         }
 
+        /// <summary>One quad (face code) of block type 1 over an atlas of the given tile colours (16 px tiles, one row); the pixel at (px, py) of a 64 px image seen from the front (or above for face 4).</summary>
+        private static async Task<(byte r, byte g, byte b)> BaRenderPixel(GPUDevice device, GPUQueue queue, byte[] atlas, int tiles, BlockMaterial material, int face, int px, int py)
+        {
+            using var textures = BlockTextureAtlas.FromRgba(device, queue, atlas, 16 * tiles, 16, 16);
+            using var pipeline = new BlockRenderPipeline();
+            pipeline.Init(device, queue, "bgra8unorm", maxSections: 4);
+            pipeline.SetTextures(textures);
+            pipeline.SetMaterials(new[] { BlockMaterial.Missing, material });
+            var (eye, target, up) = face == 4
+                ? (new Vector3(0.5f, 3f, 0.5f), new Vector3(0.5f, 0f, 0.5f), -Vector3.UnitZ)
+                : (new Vector3(0.5f, 0.5f, 3f), new Vector3(0.5f, 0.5f, 0f), Vector3.UnitY);
+            var frame = BrNeutral(BrView(eye, target, up) * BrProj90, eye);
+            pipeline.BeginFrame(frame);
+            var buffer = CreateQuadBuffer(device, queue, new[] { PackedQuad.Pack(0, 0, 0, 1, 1, face, 1) });
+            var (colorTex, depthTex, colorView, depthView) = CreateOffscreenTargets(device, 64, 64);
+            try
+            {
+                using var encoder = device.CreateCommandEncoder();
+                using (var pass = pipeline.BeginRenderPass(encoder, colorView, depthView, Vector3.Zero))
+                {
+                    pipeline.BindPass(pass, face >= 6 ? BlockRenderPipeline.Pass.Cross : BlockRenderPipeline.Pass.Opaque, buffer);
+                    pipeline.Draw(pass, 0, 1, 0);
+                    pass.End();
+                }
+                using var cmd = encoder.Finish();
+                queue.Submit(new[] { cmd });
+                await queue.OnSubmittedWorkDone();
+                var (r, g, b, _) = GetPixel(await ReadBackPixels(device, queue, colorTex, 64, 64), 64, px, py);
+                return (r, g, b);
+            }
+            finally
+            {
+                pipeline.ReleaseQuadBuffer(buffer);
+                buffer.Destroy(); buffer.Dispose();
+                DisposeTargets(colorTex, depthTex, colorView, depthView);
+            }
+        }
+
+        [TestMethod]
+        public async Task BlockRender_ThinBlock_IsSquashedToItsFloor_AndItsSidesShowTheTopStripOfTheTileTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            // One tile, 16 px: its top four rows red, the rest blue
+            var atlas = BaSolidAtlas(16, 1, 1, _ => (0, 0, 255, 255));
+            for (int y = 0; y < 4; y++) for (int x = 0; x < 16; x++) { int i = (y * 16 + x) * 4; atlas[i] = 255; atlas[i + 2] = 0; }
+            // Seen from the front, the block spans rows 21..43 (y 0 at row 43): a full block shows its middle (row 32) and its lower part (row 40)
+            var full = BlockMaterial.Uniform(0);
+            var thin = BlockMaterial.Uniform(0, flags: BlockMaterial.Thickness(4));
+            var fullMid = await BaRenderPixel(device, queue, atlas, 1, full, 2, 32, 32);
+            if (fullMid.r + fullMid.g + fullMid.b < 60) throw new Exception("a full block should cover the middle of the view");
+            // A block 4/16 thick: the middle (y = 0.5) is empty; just above its floor (y = 0.125, row 36) is the block
+            var thinMid = await BaRenderPixel(device, queue, atlas, 1, thin, 2, 32, 32);
+            if (thinMid.r + thinMid.g + thinMid.b > 10) throw new Exception($"the middle of a 4/16 block should be empty, got ({thinMid.r},{thinMid.g},{thinMid.b})");
+            var thinLow = await BaRenderPixel(device, queue, atlas, 1, thin, 2, 32, 38);
+            // The side shows the tile's top 4 rows (red), not the whole tile squeezed (mostly blue)
+            if (thinLow.r < 120 || thinLow.b > 60) throw new Exception($"the side of a thin block should show the top strip of its tile (red), got ({thinLow.r},{thinLow.g},{thinLow.b})");
+        });
+
+        [TestMethod]
+        public async Task BlockRender_PlantFromBottom_TakesItsTextureFromFaceFive_WhileTheCubeFacesKeepTheirOwnTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            // Tile 0 green (the water, in a real block), tile 1 red (the plant)
+            var atlas = BaSolidAtlas(16, 2, 1, k => k == 0 ? ((byte)0, (byte)255, (byte)0, (byte)255) : ((byte)255, (byte)0, (byte)0, (byte)255));
+            var m = BlockMaterial.Create(0, 0, 0, 0, 0, 1, flags: BlockMaterial.FlagPlantFromBottom);
+            var plant = await BaRenderPixel(device, queue, atlas, 2, m, 6, 32, 32);
+            if (plant.r < 150 || plant.g > 60) throw new Exception($"the plant should be the face-5 tile (red), got ({plant.r},{plant.g},{plant.b})");
+            var top = await BaRenderPixel(device, queue, atlas, 2, m, 4, 32, 32);
+            if (top.g < 150 || top.r > 60) throw new Exception($"the top face should keep its own tile (green), got ({top.r},{top.g},{top.b})");
+            var ordinary = BlockMaterial.Create(0, 0, 0, 0, 0, 1);
+            var plain = await BaRenderPixel(device, queue, atlas, 2, ordinary, 6, 32, 32);
+            if (plain.g < 150 || plain.r > 60) throw new Exception($"without the flag a plant uses face 0 (green), got ({plain.r},{plain.g},{plain.b})");
+        });
+
         [TestMethod]
         public async Task BlockRender_TintFaces_TintOnlyTheNamedFaces_TheTopOfGrassAndNotItsSidesTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
         {

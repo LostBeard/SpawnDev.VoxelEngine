@@ -40,6 +40,20 @@ namespace SpawnDev.VoxelEngine.Rendering
         public const uint FlagDarken = 8;
 
         /// <summary>
+        /// A plant's crossed planes (quad faces 6 and 7) take their texture and tint from FACE 5 (-Y) instead of face 0: for a block whose cube faces
+        /// are something else, such as seagrass, which is a plant standing in a cell of water (faces 0 to 4 the water, face 5 the plant).
+        /// </summary>
+        public const uint FlagPlantFromBottom = 1u << 8;
+        private const int ThicknessShift = 9;
+
+        /// <summary>
+        /// A thin block (a carpet, a rail, a pressure plate, a snow layer): the cube is squashed to <paramref name="sixteenths"/> / 16 of its height
+        /// from its floor, tops, sides and all, the sides showing the top strip of their texture. 1..15; 0 or 16 = a full block. Used with a class that
+        /// does not hide its neighbours (<see cref="Meshing.BlockClass.Cutout"/>), so what is beside and below it still shows. OR the result into <see cref="Flags"/>.
+        /// </summary>
+        public static uint Thickness(int sixteenths) => sixteenths is <= 0 or >= 16 ? 0u : (uint)sixteenths << ThicknessShift;
+
+        /// <summary>
         /// The tint multiplies only the faces named by <paramref name="faceMask"/> (bit f = face f: 0 +X, 1 -X, 2 +Z, 3 -Z, 4 +Y, 5 -Y): the top of a
         /// grass block takes the biome's colour and its sides do not. OR the result into <see cref="Flags"/>. <see cref="FlagTinted"/> tints them all.
         /// </summary>
