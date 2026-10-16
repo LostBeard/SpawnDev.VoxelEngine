@@ -66,6 +66,7 @@ const FLAG_TINTED: u32 = 1u;
 const FLAG_LOWER_TOP: u32 = 2u;
 const FLAG_FLAT_SHADING: u32 = 4u;
 const FLAG_DARKEN: u32 = 8u;
+const FLAG_EMISSIVE: u32 = 64u;   // gives its own light: drawn at full brightness whatever the hour
 const FLAG_PLANT_BOTTOM: u32 = 256u;   // plants take face 5's tile and tint (a plant standing in water)
 
 // Two triangles per quad from four corners: (0,1,2) and (1,3,2). corner = a*2 + b: a runs along the quad's A axis, b along its B axis.
@@ -83,6 +84,7 @@ struct VOut {
     @location(4) @interpolate(flat) layer: u32,
     @location(5) @interpolate(flat) alpha: f32,
     @location(6) @interpolate(flat) tintKind: u32,   // 0 = the colour is in vcolor; 1 grass, 2 foliage, 3 water = times the biome map's colour at the pixel
+    @location(7) @interpolate(flat) emissive: f32,   // 1 = the block makes its own light
 };
 
 @vertex
@@ -286,6 +288,7 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     }
     out.vcolor = min(base * shade, vec3<f32>(1.0, 1.0, 1.0));
     out.alpha = m.tint.w;
+    out.emissive = select(0.0, 1.0, (m.flags & FLAG_EMISSIVE) != 0u);
     return out;
 }
 
@@ -334,9 +337,11 @@ fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) v
     let fillDir = normalize(vec3<f32>(-0.3, 0.2, -0.5));
     let sunI = max(dot(n, frame.sunDir.xyz), 0.0);
     let fillI = max(dot(n, fillDir), 0.0);
-    let light = frame.ambient.xyz
+    var light = frame.ambient.xyz
         + frame.sunColor.xyz * sunI * frame.sunColor.w
         + vec3<f32>(0.55, 0.65, 0.85) * fillI * frame.ambient.w;
+    // A block that makes its own light is bright at night too (its shade by the face stays: the face still faces the way it does)
+    light = max(light, vec3<f32>(in.emissive, in.emissive, in.emissive));
     return vec4<f32>(applyFog(color * light, in.worldPos), 1.0);
 }
 
@@ -350,7 +355,7 @@ fn fs_water(in: VOut) -> @location(0) vec4<f32> {
     }
     if (in.tintKind != 0u) { color = color * biomeColour(in.tintKind, in.worldPos.xz); }
     let sunI = max(dot(in.normal, frame.sunDir.xyz), 0.0);
-    let lit = frame.ambient.xyz * 1.2 + frame.sunColor.xyz * sunI * frame.sunColor.w;
+    let lit = max(frame.ambient.xyz * 1.2 + frame.sunColor.xyz * sunI * frame.sunColor.w, vec3<f32>(in.emissive, in.emissive, in.emissive));
     return vec4<f32>(applyFog(color * lit, in.worldPos), in.alpha);
 }
 ";

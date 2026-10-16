@@ -46,6 +46,8 @@ namespace SpawnDev.VoxelEngine.Rendering
         public const uint FlagFlatShading = 4;
         /// <summary>Every face is drawn at 0.7 of its colour: what lies under water (the same block, darker).</summary>
         public const uint FlagDarken = 8;
+        /// <summary>The block gives off its own light (lava, glowstone, a torch): drawn at full brightness at any hour, with the sun, the ambient light and the fill light all ignored. Fog still hides it.</summary>
+        public const uint FlagEmissive = 64;
 
         /// <summary>
         /// A plant's crossed planes (quad faces 6 and 7) take their texture and tint from FACE 5 (-Y) instead of face 0: for a block whose cube faces
