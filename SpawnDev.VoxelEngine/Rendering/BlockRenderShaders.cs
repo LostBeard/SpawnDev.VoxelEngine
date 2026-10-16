@@ -59,6 +59,14 @@ struct BlockMaterial {
 @group(0) @binding(8) var biomeFoliage: texture_2d<f32>;
 @group(0) @binding(9) var biomeWater: texture_2d<f32>;
 @group(0) @binding(10) var biomeSampler: sampler;
+// The light of the columns round the camera (LightVolume): window = origin column x, z, side in columns, on (1) or off (0); tune = how bright where no sky reaches, how strong block light is
+struct LightParams {
+    window: vec4<f32>,
+    tune: vec4<f32>,
+};
+@group(0) @binding(11) var<uniform> lighting: LightParams;
+@group(0) @binding(12) var<storage, read> lightSlots: array<i32>;   // the slot of each column of the window, or -1
+@group(0) @binding(13) var<storage, read> lightData: array<u32>;    // 98,304 bytes a slot: sky light in the high four bits of a block's byte, block light in the low four
 @group(1) @binding(0) var<storage, read> quads: array<vec2<u32>>;   // PackedQuad: i64 as (lo, hi)
 
 const NO_TEXTURE: u32 = 0xFFFFu;
@@ -317,6 +325,34 @@ fn biomeColour(kind: u32, worldXZ: vec2<f32>) -> vec3<f32> {
     return textureSampleLevel(biomeWater, biomeSampler, uv, 0.0).xyz;
 }
 
+// The light of the cell in front of a face: x the sky light, y the block light (0..15); open sky and no block light where there is no data
+fn lightLevels(worldPos: vec3<f32>, normal: vec3<f32>) -> vec2<f32> {
+    let cell = vec3<i32>(floor(worldPos + normal * 0.5));
+    let side = i32(lighting.window.z);
+    let wx = (cell.x >> 4u) - i32(lighting.window.x);
+    let wz = (cell.z >> 4u) - i32(lighting.window.y);
+    let y = cell.y + 64;
+    if (wx < 0 || wz < 0 || wx >= side || wz >= side || y < 0 || y >= 384) { return vec2<f32>(15.0, 0.0); }
+    let slot = lightSlots[wz * side + wx];
+    if (slot < 0) { return vec2<f32>(15.0, 0.0); }
+    let index = u32(slot) * 98304u + u32(y) * 256u + u32(cell.z & 15) * 16u + u32(cell.x & 15);
+    let packed = (lightData[index >> 2u] >> ((index & 3u) * 8u)) & 255u;
+    return vec2<f32>(f32(packed >> 4u), f32(packed & 15u));
+}
+
+// The game's own curve from a light level to how bright it looks: 0 black, 15 full, a steep rise over the first levels
+fn levelBrightness(level: f32) -> f32 {
+    let f = 1.0 - level / 15.0;
+    return 1.0 - f / (4.0 - 3.0 * f);
+}
+
+// What the light of a place does to what the sun and the sky would give it: where no sky reaches it is dimmed to the floor, and block light (warm) shows over it
+fn applyLevels(skyAndSun: vec3<f32>, levels: vec2<f32>) -> vec3<f32> {
+    let skyScale = mix(lighting.tune.x, 1.0, levelBrightness(levels.x));
+    let torch = vec3<f32>(1.0, 0.84, 0.60) * levelBrightness(levels.y) * lighting.tune.y;
+    return max(skyAndSun * skyScale, torch);
+}
+
 // Opaque and plant pass: alpha cutout (leaf gaps, plant outlines), sun + ambient + a fixed cool fill light, fog.
 @fragment
 fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4<f32> {
@@ -340,6 +376,7 @@ fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) v
     var light = frame.ambient.xyz
         + frame.sunColor.xyz * sunI * frame.sunColor.w
         + vec3<f32>(0.55, 0.65, 0.85) * fillI * frame.ambient.w;
+    if (lighting.window.w > 0.5) { light = applyLevels(light, lightLevels(in.worldPos, n)); }
     // A block that makes its own light is bright at night too (its shade by the face stays: the face still faces the way it does)
     light = max(light, vec3<f32>(in.emissive, in.emissive, in.emissive));
     return vec4<f32>(applyFog(color * light, in.worldPos), 1.0);
@@ -355,7 +392,9 @@ fn fs_water(in: VOut) -> @location(0) vec4<f32> {
     }
     if (in.tintKind != 0u) { color = color * biomeColour(in.tintKind, in.worldPos.xz); }
     let sunI = max(dot(in.normal, frame.sunDir.xyz), 0.0);
-    let lit = max(frame.ambient.xyz * 1.2 + frame.sunColor.xyz * sunI * frame.sunColor.w, vec3<f32>(in.emissive, in.emissive, in.emissive));
+    var lit = frame.ambient.xyz * 1.2 + frame.sunColor.xyz * sunI * frame.sunColor.w;
+    if (lighting.window.w > 0.5) { lit = applyLevels(lit, lightLevels(in.worldPos, in.normal)); }
+    lit = max(lit, vec3<f32>(in.emissive, in.emissive, in.emissive));
     return vec4<f32>(applyFog(color * lit, in.worldPos), in.alpha);
 }
 ";

@@ -34,6 +34,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         private GPURenderPipeline? _opaque, _cross, _water;
         private BlockTextureAtlas? _ownedPlaceholder;
         private BiomeTintMap? _biomeTints, _ownedBiomeTints;
+        private LightVolume? _light, _ownedLight;
         private GPUTextureView? _textureView;
         private int _atlasTilesPerRow = 1, _atlasTileSize = 1, _atlasTileCount = 1;
         private readonly Dictionary<GPUBuffer, GPUBindGroup> _quadBindGroups = new();
@@ -104,6 +105,10 @@ namespace SpawnDev.VoxelEngine.Rendering
                     new() { Binding = 8, Visibility = GPUShaderStageFlags.FRAGMENT, Texture = new GPUTextureBindingLayout { SampleType = "float", ViewDimension = "2d" } },
                     new() { Binding = 9, Visibility = GPUShaderStageFlags.FRAGMENT, Texture = new GPUTextureBindingLayout { SampleType = "float", ViewDimension = "2d" } },
                     new() { Binding = 10, Visibility = GPUShaderStageFlags.FRAGMENT, Sampler = new GPUSamplerBindingLayout { Type = "filtering" } },
+                    // The light of the world near the camera (LightVolume): its settings, the slot of each column of the window, the bytes
+                    new() { Binding = 11, Visibility = GPUShaderStageFlags.FRAGMENT, Buffer = new GPUBufferBindingLayout { Type = "uniform" } },
+                    new() { Binding = 12, Visibility = GPUShaderStageFlags.FRAGMENT, Buffer = new GPUBufferBindingLayout { Type = "read-only-storage" } },
+                    new() { Binding = 13, Visibility = GPUShaderStageFlags.FRAGMENT, Buffer = new GPUBufferBindingLayout { Type = "read-only-storage" } },
                 },
             });
             _quadLayout = device.CreateBindGroupLayout(new GPUBindGroupLayoutDescriptor
@@ -123,6 +128,13 @@ namespace SpawnDev.VoxelEngine.Rendering
             _cross = CreatePipeline(shader, "fs_main", colorFormat, GPUCullMode.None, blend: false, depthWrite: true);
             // Water is seen from both sides: from below, a swimmer looks up at the underside of the surface
             _water = CreatePipeline(shader, "fs_water", colorFormat, GPUCullMode.None, blend: true, depthWrite: false);
+
+            // No light until a world gives some: a one-slot volume, switched off
+            _ownedLight = new LightVolume();
+            _ownedLight.Init(device, queue, 1, 1);
+            _ownedLight.Enabled = false;
+            _ownedLight.Update();
+            _light = _ownedLight;
 
             // Plains colours everywhere until a world says otherwise
             _ownedBiomeTints = BiomeTintMap.Create(device, queue);
@@ -254,8 +266,23 @@ namespace SpawnDev.VoxelEngine.Rendering
                     new() { Binding = 8, Resource = _biomeTints.Foliage.View },
                     new() { Binding = 9, Resource = _biomeTints.Water.View },
                     new() { Binding = 10, Resource = _biomeTints.Sampler },
+                    new() { Binding = 11, Resource = new GPUBufferBinding { Buffer = _light!.Params! } },
+                    new() { Binding = 12, Resource = new GPUBufferBinding { Buffer = _light.Slots! } },
+                    new() { Binding = 13, Resource = new GPUBufferBinding { Buffer = _light.Data! } },
                 },
             });
+        }
+
+        /// <summary>
+        /// The light the pixels are lit by (sky light and block light near the camera). The caller keeps ownership and must keep the volume alive while the pipeline can draw; call
+        /// <see cref="LightVolume.Update"/> each frame before drawing. Without one the world is lit as it was before there was any light data.
+        /// </summary>
+        public void SetLight(LightVolume volume)
+        {
+            if (_device == null) throw new InvalidOperationException("Call Init first");
+            if (!volume.IsReady) throw new ArgumentException("The light volume has not been initialised", nameof(volume));
+            _light = volume;
+            RebuildFrameBindGroup();
         }
 
         /// <summary>
@@ -304,6 +331,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         public void BeginFrame(in BlockFrameUniforms frame)
         {
             if (_frameBuffer == null || _queue == null) throw new InvalidOperationException("Call Init first");
+            _light?.Update();
             var bytes = new byte[BlockFrameUniforms.SizeInBytes];
             var f = frame;
             f.AtlasTilesPerRow = _atlasTilesPerRow;   // the atlas in use, not something a caller should have to repeat
@@ -430,6 +458,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             _shapeBuffer?.Destroy(); _shapeBuffer?.Dispose();
             _ownedPlaceholder?.Dispose();
             _ownedBiomeTints?.Dispose();
+            _ownedLight?.Dispose();
         }
     }
 }
