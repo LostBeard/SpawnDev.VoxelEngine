@@ -32,6 +32,14 @@ namespace SpawnDev.VoxelEngine.Rendering
 
         /// <summary>The tint multiplies the texture (grass, foliage, water). Without it a textured block draws its texture as is.</summary>
         public const uint FlagTinted = 1;
+        /// <summary>
+        /// What the tint IS: none of these = the material's own colour (<see cref="TintR"/>...); one of them = the colour of the <see cref="BiomeTintMap"/> at the pixel's place (grass, foliage or
+        /// water colour of the biome there). OR into <see cref="Flags"/> together with <see cref="FlagTinted"/> or <see cref="TintFaces"/>.
+        /// </summary>
+        public const uint TintGrass = 1u << 4, TintFoliage = 2u << 4, TintWater = 3u << 4;
+        /// <summary>The bits of <see cref="Flags"/> that say which biome colour tints (0 = the material's own).</summary>
+        public const uint TintKindMask = 3u << 4;
+
         /// <summary>The top face sits 0.1 below the block's top edge (a water surface).</summary>
         public const uint FlagLowerTop = 2;
         /// <summary>No per-face brightness steps: side and top faces draw at full brightness, only the bottom face is darkened (water).</summary>

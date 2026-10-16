@@ -33,6 +33,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         private GPUBindGroup? _frameBindGroup;
         private GPURenderPipeline? _opaque, _cross, _water;
         private BlockTextureAtlas? _ownedPlaceholder;
+        private BiomeTintMap? _biomeTints, _ownedBiomeTints;
         private GPUTextureView? _textureView;
         private int _atlasTilesPerRow = 1, _atlasTileSize = 1, _atlasTileCount = 1;
         private readonly Dictionary<GPUBuffer, GPUBindGroup> _quadBindGroups = new();
@@ -99,6 +100,10 @@ namespace SpawnDev.VoxelEngine.Rendering
                     new() { Binding = 4, Visibility = GPUShaderStageFlags.VERTEX, Buffer = new GPUBufferBindingLayout { Type = "read-only-storage" } },
                     new() { Binding = 5, Visibility = GPUShaderStageFlags.VERTEX, Buffer = new GPUBufferBindingLayout { Type = "read-only-storage" } },
                     new() { Binding = 6, Visibility = GPUShaderStageFlags.VERTEX, Buffer = new GPUBufferBindingLayout { Type = "read-only-storage" } },
+                    new() { Binding = 7, Visibility = GPUShaderStageFlags.FRAGMENT, Texture = new GPUTextureBindingLayout { SampleType = "float", ViewDimension = "2d" } },
+                    new() { Binding = 8, Visibility = GPUShaderStageFlags.FRAGMENT, Texture = new GPUTextureBindingLayout { SampleType = "float", ViewDimension = "2d" } },
+                    new() { Binding = 9, Visibility = GPUShaderStageFlags.FRAGMENT, Texture = new GPUTextureBindingLayout { SampleType = "float", ViewDimension = "2d" } },
+                    new() { Binding = 10, Visibility = GPUShaderStageFlags.FRAGMENT, Sampler = new GPUSamplerBindingLayout { Type = "filtering" } },
                 },
             });
             _quadLayout = device.CreateBindGroupLayout(new GPUBindGroupLayoutDescriptor
@@ -118,6 +123,10 @@ namespace SpawnDev.VoxelEngine.Rendering
             _cross = CreatePipeline(shader, "fs_main", colorFormat, GPUCullMode.None, blend: false, depthWrite: true);
             // Water is seen from both sides: from below, a swimmer looks up at the underside of the surface
             _water = CreatePipeline(shader, "fs_water", colorFormat, GPUCullMode.None, blend: true, depthWrite: false);
+
+            // Plains colours everywhere until a world says otherwise
+            _ownedBiomeTints = BiomeTintMap.Create(device, queue);
+            _biomeTints = _ownedBiomeTints;
 
             // A valid texture binding before any real textures are set
             _ownedPlaceholder = BlockTextureAtlas.White(device, queue);
@@ -241,6 +250,10 @@ namespace SpawnDev.VoxelEngine.Rendering
                     new() { Binding = 4, Resource = new GPUBufferBinding { Buffer = _animTableBuffer! } },
                     new() { Binding = 5, Resource = new GPUBufferBinding { Buffer = _timelineBuffer! } },
                     new() { Binding = 6, Resource = new GPUBufferBinding { Buffer = _shapeBuffer! } },
+                    new() { Binding = 7, Resource = _biomeTints!.Grass.View },
+                    new() { Binding = 8, Resource = _biomeTints.Foliage.View },
+                    new() { Binding = 9, Resource = _biomeTints.Water.View },
+                    new() { Binding = 10, Resource = _biomeTints.Sampler },
                 },
             });
         }
@@ -255,6 +268,17 @@ namespace SpawnDev.VoxelEngine.Rendering
             var words = new uint[ShapeTable.MaxSlots * ShapeTable.WordsPerSlot];
             shapes.Words().CopyTo(words, 0);
             _queue.WriteBuffer(_shapeBuffer, 0, MemoryMarshal.AsBytes(words.AsSpan()).ToArray());
+        }
+
+        /// <summary>
+        /// The biome colour maps that blocks tinted with <see cref="BlockMaterial.TintGrass"/> / <see cref="BlockMaterial.TintFoliage"/> / <see cref="BlockMaterial.TintWater"/> read. The caller keeps ownership and
+        /// must keep the map alive while the pipeline can draw; the pipeline starts with plains colours everywhere.
+        /// </summary>
+        public void SetBiomeTints(BiomeTintMap map)
+        {
+            if (_device == null) throw new InvalidOperationException("Call Init first");
+            _biomeTints = map;
+            RebuildFrameBindGroup();
         }
 
         /// <summary>Set the world-space origin (the corner of section-local 0,0,0) of sections firstIndex, firstIndex + 1, ...</summary>
@@ -405,6 +429,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             _originBuffer?.Destroy(); _originBuffer?.Dispose();
             _shapeBuffer?.Destroy(); _shapeBuffer?.Dispose();
             _ownedPlaceholder?.Dispose();
+            _ownedBiomeTints?.Dispose();
         }
     }
 }

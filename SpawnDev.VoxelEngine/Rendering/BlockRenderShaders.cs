@@ -54,6 +54,11 @@ struct BlockMaterial {
 @group(0) @binding(5) var<storage, read> timeline: array<u32>;
 // The boxes of the shaped blocks (ShapeTable.Words): per slot 32 boxes of 16 words; word 0 the box (bit 31 = exists, x0 y0 z0 x1 y1 z1 in sixteenths, 5 bits each), then per face a tile word and a window word
 @group(0) @binding(6) var<storage, read> shapeWords: array<u32>;
+// The biome colour maps (BiomeTintMap): one texel per 4 x 4 blocks, 256 across, wrapping; sampled linearly so biome borders blend
+@group(0) @binding(7) var biomeGrass: texture_2d<f32>;
+@group(0) @binding(8) var biomeFoliage: texture_2d<f32>;
+@group(0) @binding(9) var biomeWater: texture_2d<f32>;
+@group(0) @binding(10) var biomeSampler: sampler;
 @group(1) @binding(0) var<storage, read> quads: array<vec2<u32>>;   // PackedQuad: i64 as (lo, hi)
 
 const NO_TEXTURE: u32 = 0xFFFFu;
@@ -77,6 +82,7 @@ struct VOut {
     @location(3) @interpolate(flat) vcolor: vec3<f32>,
     @location(4) @interpolate(flat) layer: u32,
     @location(5) @interpolate(flat) alpha: f32,
+    @location(6) @interpolate(flat) tintKind: u32,   // 0 = the colour is in vcolor; 1 grass, 2 foliage, 3 water = times the biome map's colour at the pixel
 };
 
 @vertex
@@ -262,8 +268,14 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     var base = vec3<f32>(1.0, 1.0, 1.0);
     var faceTinted = ((m.flags >> (16u + f)) & 1u) != 0u;
     if (isShape) { faceTinted = shapeTinted; }
+    out.tintKind = 0u;
     if ((m.flags & FLAG_TINTED) != 0u || faceTinted || out.layer == NO_TEXTURE) {
         base = m.tint.xyz;
+        let kind = (m.flags >> 4u) & 3u;
+        if (kind != 0u && out.layer != NO_TEXTURE) {
+            base = vec3<f32>(1.0, 1.0, 1.0);   // the pixel's biome colour is multiplied in by the fragment shader
+            out.tintKind = kind;
+        }
     }
     if ((m.flags & FLAG_DARKEN) != 0u) {
         base = base * 0.7;   // what lies under water
@@ -294,6 +306,14 @@ fn applyFog(color: vec3<f32>, worldPos: vec3<f32>) -> vec3<f32> {
     return mix(color, frame.fogColor.xyz, f * f);
 }
 
+// The biome colour at a world position (x, z): the map of this kind, one texel per 4 blocks, wrapping, linear
+fn biomeColour(kind: u32, worldXZ: vec2<f32>) -> vec3<f32> {
+    let uv = worldXZ / 1024.0;
+    if (kind == 1u) { return textureSampleLevel(biomeGrass, biomeSampler, uv, 0.0).xyz; }
+    if (kind == 2u) { return textureSampleLevel(biomeFoliage, biomeSampler, uv, 0.0).xyz; }
+    return textureSampleLevel(biomeWater, biomeSampler, uv, 0.0).xyz;
+}
+
 // Opaque and plant pass: alpha cutout (leaf gaps, plant outlines), sun + ambient + a fixed cool fill light, fog.
 @fragment
 fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4<f32> {
@@ -303,6 +323,7 @@ fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) v
         if (t.a < 0.3) { discard; }
         color = color * t.xyz;
     }
+    if (in.tintKind != 0u) { color = color * biomeColour(in.tintKind, in.worldPos.xz); }
 
     // Plants are double-sided: light the side that is facing the camera
     var n = in.normal;
@@ -327,6 +348,7 @@ fn fs_water(in: VOut) -> @location(0) vec4<f32> {
         let t = blockTexel(in.layer, in.uv);
         color = color * t.xyz;
     }
+    if (in.tintKind != 0u) { color = color * biomeColour(in.tintKind, in.worldPos.xz); }
     let sunI = max(dot(in.normal, frame.sunDir.xyz), 0.0);
     let lit = frame.ambient.xyz * 1.2 + frame.sunColor.xyz * sunI * frame.sunColor.w;
     return vec4<f32>(applyFog(color * lit, in.worldPos), in.alpha);
