@@ -26,7 +26,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         private readonly int[] _table = new int[MaxSide * MaxSide];
         private int _originX, _originZ;
         private bool _tableDirty = true, _paramsDirty = true, _enabled = true, _windowSet;
-        private float _floor = 0.12f, _blockStrength = 1f;
+        private float _floor = 0.3f, _blockStrength = 1f;
 
         /// <summary>Slots: how many columns can have light at once.</summary>
         public int SlotCount { get; private set; }
@@ -47,7 +47,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             set { if (_enabled != value) { _enabled = value; _paramsDirty = true; } }
         }
 
-        /// <summary>How bright the world is where no sky reaches (0 = black, the game's own darkness; the default 0.12 leaves a cave readable).</summary>
+        /// <summary>How bright the world is where no sky reaches (0 = black, the game's own darkness; the default 0.3 leaves a cave readable to a spectator).</summary>
         public float DarkFloor
         {
             get => _floor;
