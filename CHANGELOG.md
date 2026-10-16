@@ -3,6 +3,14 @@
 ## Unreleased - thin blocks, plants that stand in water
 
 ### Added
+- **Shaped blocks: stairs, slabs, fences, doors... (`ShapeTable`, `BlockClass.Shaped`, `BlockMaterial.Shape`)**. A block that is not a cube is up to eight BOXES of its cell, each with six faces
+  (an atlas tile, a window of the tile in sixteenths, a quarter-turn count, a tint flag). A block type gets a slot in a `ShapeTable` (1,024 slots) and says so in its class
+  (`BlockClass.ShapeSlot(slot)`: emits no cube faces, hides nothing) and its material (`BlockMaterial.Shape(slot)`). `ColumnMesher.SetShapes(table)`: a new kernel (`ShapeKernel`, one thread per cell,
+  right after the opaque pass) emits each box face that can be seen as a one-by-one quad flagged `PackedQuad.ShapedFlag` with its box number, into the opaque list - faces on the cell boundary against an
+  occluding neighbour are left out; `BlockRenderPipeline.SetShapes(table)` binds the boxes (binding 6) and the vertex shader places each face by its box and takes tile, window and turn from the table.
+  No new pass, no new draw. Tests (PMT, WebGPU): the table packs; the mesher emits 6 + 5 faces for a two-box stair, loses the two against a stone neighbour, the stone shows its face toward the stair;
+  a slab is half-high with the lower window of its tile on its side and its own tile on top; a second slot and a second box land where they are; a turned face turns its tile clockwise (all four turns);
+  side faces are upright and unmirrored from the south and the north; 7 mutations caught (turn, cull, window, orientation, slot, box index).
 - **`BlockMaterial.Thickness(sixteenths)`** (flag bits 9..12): a thin block - a carpet, rail, pressure plate, snow layer, closed trapdoor - is the cube squashed to n/16 of its
   height from its floor, tops and sides, the sides showing the top strip of their texture rather than the whole tile squeezed. Pair it with a class that hides nothing
   (`BlockClass.Cutout`) so what is beside and below still shows. Test: the middle of a 4/16 block is empty, just above its floor is solid, the side shows the tile's top rows;

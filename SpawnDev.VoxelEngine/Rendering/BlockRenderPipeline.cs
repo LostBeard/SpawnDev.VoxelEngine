@@ -27,7 +27,7 @@ namespace SpawnDev.VoxelEngine.Rendering
 
         private GPUDevice? _device;
         private GPUQueue? _queue;
-        private GPUBuffer? _frameBuffer, _materialBuffer, _originBuffer, _animTableBuffer, _timelineBuffer;
+        private GPUBuffer? _frameBuffer, _materialBuffer, _originBuffer, _animTableBuffer, _timelineBuffer, _shapeBuffer;
         private GPUBindGroupLayout? _frameLayout, _quadLayout;
         private GPUPipelineLayout? _pipelineLayout;
         private GPUBindGroup? _frameBindGroup;
@@ -76,6 +76,12 @@ namespace SpawnDev.VoxelEngine.Rendering
                 Size = (ulong)maxSections * 16,
                 Usage = GPUBufferUsage.Storage | GPUBufferUsage.CopyDst,
             });
+            // The shaped blocks' boxes (all absent until SetShapes)
+            _shapeBuffer = device.CreateBuffer(new GPUBufferDescriptor
+            {
+                Size = (ulong)ShapeTable.MaxSlots * ShapeTable.WordsPerSlot * 4,
+                Usage = GPUBufferUsage.Storage | GPUBufferUsage.CopyDst,
+            });
 
             // Every block type starts as "missing" (untextured magenta), so an unregistered type is visible, not black
             var missing = new BlockMaterial[PackedBlock.MaxBlockTypes];
@@ -92,6 +98,7 @@ namespace SpawnDev.VoxelEngine.Rendering
                     new() { Binding = 3, Visibility = GPUShaderStageFlags.FRAGMENT, Texture = new GPUTextureBindingLayout { SampleType = "float", ViewDimension = "2d" } },
                     new() { Binding = 4, Visibility = GPUShaderStageFlags.VERTEX, Buffer = new GPUBufferBindingLayout { Type = "read-only-storage" } },
                     new() { Binding = 5, Visibility = GPUShaderStageFlags.VERTEX, Buffer = new GPUBufferBindingLayout { Type = "read-only-storage" } },
+                    new() { Binding = 6, Visibility = GPUShaderStageFlags.VERTEX, Buffer = new GPUBufferBindingLayout { Type = "read-only-storage" } },
                 },
             });
             _quadLayout = device.CreateBindGroupLayout(new GPUBindGroupLayoutDescriptor
@@ -233,8 +240,21 @@ namespace SpawnDev.VoxelEngine.Rendering
                     new() { Binding = 3, Resource = _textureView! },
                     new() { Binding = 4, Resource = new GPUBufferBinding { Buffer = _animTableBuffer! } },
                     new() { Binding = 5, Resource = new GPUBufferBinding { Buffer = _timelineBuffer! } },
+                    new() { Binding = 6, Resource = new GPUBufferBinding { Buffer = _shapeBuffer! } },
                 },
             });
+        }
+
+        /// <summary>
+        /// The shapes of the shaped blocks (<see cref="BlockMaterial.Shape"/>): their boxes, tiles and windows. Give the same table to <see cref="Meshing.ColumnMesher.SetShapes"/>, which makes the quads.
+        /// Replaces the table; the tiles are atlas tiles, so set it after <see cref="SetTextures"/> (whose animations it does not touch).
+        /// </summary>
+        public void SetShapes(ShapeTable shapes)
+        {
+            if (_shapeBuffer == null || _queue == null) throw new InvalidOperationException("Call Init first");
+            var words = new uint[ShapeTable.MaxSlots * ShapeTable.WordsPerSlot];
+            shapes.Words().CopyTo(words, 0);
+            _queue.WriteBuffer(_shapeBuffer, 0, MemoryMarshal.AsBytes(words.AsSpan()).ToArray());
         }
 
         /// <summary>Set the world-space origin (the corner of section-local 0,0,0) of sections firstIndex, firstIndex + 1, ...</summary>
@@ -380,6 +400,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             _frameBuffer?.Destroy(); _frameBuffer?.Dispose();
             _materialBuffer?.Destroy(); _materialBuffer?.Dispose();
             _originBuffer?.Destroy(); _originBuffer?.Dispose();
+            _shapeBuffer?.Destroy(); _shapeBuffer?.Dispose();
             _ownedPlaceholder?.Dispose();
         }
     }

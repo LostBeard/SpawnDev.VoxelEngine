@@ -2,6 +2,7 @@ using ILGPU;
 using ILGPU.Runtime;
 using SpawnDev.ILGPU;
 using SpawnDev.SpawnJS.JSObjects;
+using SpawnDev.VoxelEngine.Rendering;
 
 namespace SpawnDev.VoxelEngine.Meshing
 {
@@ -120,9 +121,12 @@ namespace SpawnDev.VoxelEngine.Meshing
         private readonly Action<Index1D, ArrayView<long>, ArrayView<long>, ArrayView<long>, int> _faceCull;
         private readonly Action<Index1D, ArrayView<long>, ArrayView<ushort>, ArrayView<long>, ArrayView<int>, int, int> _merge;
         private readonly Action<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int> _plants;
+        private readonly Action<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<uint>, ArrayView<long>, ArrayView<long>, ArrayView<int>, int> _shapes;
         private readonly Action<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int, int> _compact;
 
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _typeFlags;
+        private readonly MemoryBuffer1D<uint, Stride1D.Dense> _shapeWords;
+        private bool _hasShapes;
         private readonly MemoryBuffer1D<long, Stride1D.Dense> _emit, _occlude, _faceMasks;
         private readonly MemoryBuffer1D<long, Stride1D.Dense> _scratchOpaque, _scratchPlants, _scratchWater;
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _counters;       // 3 passes x (sections + 1)
@@ -167,10 +171,13 @@ namespace SpawnDev.VoxelEngine.Meshing
                 ColumnMeshKernels.GreedyMergeKernel);
             _plants = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int>(
                 ColumnMeshKernels.PlantKernel);
+            _shapes = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<uint>, ArrayView<long>, ArrayView<long>, ArrayView<int>, int>(
+                ColumnMeshKernels.ShapeKernel);
             _compact = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int, int>(
                 ColumnMeshKernels.CompactKernel);
 
             _typeFlags = accelerator.Allocate1D<int>(PackedBlock.MaxBlockTypes);
+            _shapeWords = accelerator.Allocate1D<uint>(ShapeTable.MaxSlots * ShapeTable.WordsPerSlot);
             _emit = accelerator.Allocate1D<long>(sectionCount * ColumnMeshKernels.PaddedCellsPerSection);
             _occlude = accelerator.Allocate1D<long>(sectionCount * ColumnMeshKernels.PaddedCellsPerSection);
             _faceMasks = accelerator.Allocate1D<long>(sectionCount * 6 * ColumnMeshKernels.ColumnsCellsPerLayer);
@@ -223,6 +230,18 @@ namespace SpawnDev.VoxelEngine.Meshing
         }
 
         /// <summary>
+        /// The shapes of the blocks whose class is <see cref="BlockClass.Shaped"/> (slot numbers as <see cref="BlockClass.ShapeSlot"/> says): the mesher turns each such block into the faces of its
+        /// boxes. Call after <see cref="SetBlockClasses"/>; a table changed later needs another call. A column meshed before the call has no shapes.
+        /// </summary>
+        public void SetShapes(SpawnDev.VoxelEngine.Rendering.ShapeTable shapes)
+        {
+            var words = new uint[SpawnDev.VoxelEngine.Rendering.ShapeTable.MaxSlots * SpawnDev.VoxelEngine.Rendering.ShapeTable.WordsPerSlot];
+            shapes.Words().CopyTo(words, 0);
+            _shapeWords.CopyFromCPU(words);
+            _hasShapes = shapes.Count > 0;
+        }
+
+        /// <summary>
         /// Mesh one column. <paramref name="column"/> is ushort block types, x + z * 16 + y * 256 for y in [0, 16 * SectionCount); the
         /// neighbours (-X, +X, -Z, +Z) are the adjacent columns in the same layout, or null when not loaded.
         /// </summary>
@@ -254,6 +273,10 @@ namespace SpawnDev.VoxelEngine.Meshing
 
             // Opaque pass, then water pass: same kernels, different bits of the class table
             RunCubePass(column.View, vNegX, vPosX, vNegZ, vPosZ, BlockClass.OpaqueShift, missing, solid, _scratchOpaque, _counters.View.SubView(0, stride));
+            // The shaped blocks' boxes go in the opaque list; the occupancy the pass just made (what hides what) is still in place, the water pass is about to replace it
+            if (_hasShapes)
+                _shapes((Index1D)(_sections * ColumnMeshKernels.CellsPerSection),
+                    column.View, _typeFlags.View, _shapeWords.View, _occlude.View, _scratchOpaque.View, _counters.View.SubView(0, stride), _sections);
             RunCubePass(column.View, vNegX, vPosX, vNegZ, vPosZ, BlockClass.WaterShift, missing, solid, _scratchWater, _counters.View.SubView(2 * stride, stride));
 
             // Plants: two quads per plant block
@@ -312,6 +335,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         public void Dispose()
         {
             _typeFlags.Dispose();
+            _shapeWords.Dispose();
             _emit.Dispose(); _occlude.Dispose(); _faceMasks.Dispose();
             _scratchOpaque.Dispose(); _scratchPlants.Dispose(); _scratchWater.Dispose();
             _counters.Dispose();

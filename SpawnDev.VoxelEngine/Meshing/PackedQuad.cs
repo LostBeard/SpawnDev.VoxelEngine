@@ -28,6 +28,15 @@ namespace SpawnDev.VoxelEngine.Meshing
         public const int SectionIndexShift = 47;
         public const int SectionIndexMask = 0x1F;
 
+        /// <summary>Bit 52: the quad is a face of one BOX of a shaped block (<see cref="Rendering.ShapeTable"/>), not a cube face; bits 53-55 say which box (0-7).</summary>
+        public const long ShapedFlag = 1L << 52;
+        public const int BoxShift = 53;
+        public const int BoxMask = 7;
+
+        /// <summary>A quad for face <paramref name="face"/> of box <paramref name="box"/> of the shaped block of type <paramref name="blockType"/> in cell (x, y, z).</summary>
+        public static long PackShapeFace(int x, int y, int z, int face, int blockType, int box)
+            => Pack(x, y, z, 1, 1, face, blockType) | ShapedFlag | ((long)(box & BoxMask) << BoxShift);
+
         public static long Pack(int x, int y, int z, int width, int height, int face, int blockType, int damage = 0, int ao = 0, int sectionIndex = 0)
         {
             return (long)(x & 0xF)
@@ -48,6 +57,12 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// <summary>The same quad with its section index set (replacing any embedded one).</summary>
         public static long WithSectionIndex(long packed, int sectionIndex)
             => (packed & ~((long)SectionIndexMask << SectionIndexShift)) | ((long)(sectionIndex & SectionIndexMask) << SectionIndexShift);
+
+        /// <summary>Whether the quad is a face of a shaped block's box.</summary>
+        public static bool IsShapeFace(long packed) => (packed & ShapedFlag) != 0;
+
+        /// <summary>Which box of its shape a shaped quad belongs to.</summary>
+        public static int UnpackBox(long packed) => (int)((packed >> BoxShift) & BoxMask);
 
         public static void Unpack(long packed, out int x, out int y, out int z,
             out int width, out int height, out int face, out int blockType)

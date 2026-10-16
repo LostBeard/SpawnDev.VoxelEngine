@@ -23,6 +23,18 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// <summary>The block is a plant: two crossed planes (quad faces 6 and 7), no cube faces.</summary>
         public const int Plant = 1 << 4;
 
+        /// <summary>
+        /// The block is a SHAPE (a stair, a slab, a fence, a door...): not a cube, so it emits no cube faces and hides nothing; the mesher draws the boxes of its
+        /// <see cref="Rendering.ShapeTable"/> slot instead (<see cref="ShapeSlot"/>).
+        /// </summary>
+        public const int Shaped = 1 << 5;
+        /// <summary>The slot of the block's shape in the <see cref="Rendering.ShapeTable"/> sits in these bits of the class (10 bits).</summary>
+        public const int ShapeSlotShift = 8;
+        public const int ShapeSlotMask = 0x3FF;
+
+        /// <summary>The class of a shaped block whose shape is slot <paramref name="slot"/> of the shape table.</summary>
+        public static int ShapeSlot(int slot) => Shaped | ((slot & ShapeSlotMask) << ShapeSlotShift);
+
         /// <summary>Air, and anything never drawn.</summary>
         public const int None = 0;
 

@@ -52,6 +52,8 @@ struct BlockMaterial {
 // Animated tiles: animTable[tile] = (offset into timeline, length), length 0 = not animated; timeline[offset + tick % length] = the tile shown
 @group(0) @binding(4) var<storage, read> animTable: array<vec2<u32>>;
 @group(0) @binding(5) var<storage, read> timeline: array<u32>;
+// The boxes of the shaped blocks (ShapeTable.Words): per slot 8 boxes of 16 words; word 0 the box (bit 31 = exists, x0 y0 z0 x1 y1 z1 in sixteenths, 5 bits each), then per face a tile word and a window word
+@group(0) @binding(6) var<storage, read> shapeWords: array<u32>;
 @group(1) @binding(0) var<storage, read> quads: array<vec2<u32>>;   // PackedQuad: i64 as (lo, hi)
 
 const NO_TEXTURE: u32 = 0xFFFFu;
@@ -162,9 +164,53 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
         }
     }
 
+    // A face of a box of a shaped block (stair, slab, fence...): the rectangle is the box's face, the texture the box's own tile and window, turned as the table says
+    let isShape = ((hi >> 20u) & 1u) != 0u && face < 6u;
+    var shapeTile = NO_TEXTURE;
+    var shapeTinted = false;
+    let m = materials[blockType];
+    if (isShape) {
+        let boxIdx = (hi >> 21u) & 7u;
+        let slot = (m.flags >> 22u) & 1023u;
+        let boxBase = (slot * 8u + boxIdx) * 16u;
+        let w0 = shapeWords[boxBase];
+        let bx0 = f32(w0 & 31u) / 16.0;
+        let by0 = f32((w0 >> 5u) & 31u) / 16.0;
+        let bz0 = f32((w0 >> 10u) & 31u) / 16.0;
+        let bx1 = f32((w0 >> 15u) & 31u) / 16.0;
+        let by1 = f32((w0 >> 20u) & 31u) / 16.0;
+        let bz1 = f32((w0 >> 25u) & 31u) / 16.0;
+        let dx = bx1 - bx0;
+        let dy = by1 - by0;
+        let dz = bz1 - bz0;
+        let cell = vec3<f32>(qx, qy, qz);
+        switch (face) {
+            case 0u: { origin = cell + vec3<f32>(bx1, by0, bz0); axisA = vec3<f32>(0.0, 0.0, dz); axisB = vec3<f32>(0.0, dy, 0.0); }
+            case 1u: { origin = cell + vec3<f32>(bx0, by0, bz1); axisA = vec3<f32>(0.0, 0.0, -dz); axisB = vec3<f32>(0.0, dy, 0.0); }
+            case 2u: { origin = cell + vec3<f32>(bx1, by0, bz1); axisA = vec3<f32>(-dx, 0.0, 0.0); axisB = vec3<f32>(0.0, dy, 0.0); }
+            case 3u: { origin = cell + vec3<f32>(bx0, by0, bz0); axisA = vec3<f32>(dx, 0.0, 0.0); axisB = vec3<f32>(0.0, dy, 0.0); }
+            case 4u: { origin = cell + vec3<f32>(bx0, by1, bz0); axisA = vec3<f32>(dx, 0.0, 0.0); axisB = vec3<f32>(0.0, 0.0, dz); }
+            default: { origin = cell + vec3<f32>(bx0, by0, bz1); axisA = vec3<f32>(dx, 0.0, 0.0); axisB = vec3<f32>(0.0, 0.0, -dz); }
+        }
+        let fa = shapeWords[boxBase + 1u + face * 2u];
+        let fb = shapeWords[boxBase + 2u + face * 2u];
+        shapeTile = fa & 0xFFFFu;
+        shapeTinted = ((fa >> 18u) & 1u) != 0u;
+        let turn = (fa >> 16u) & 3u;
+        // Where on the face this corner is: s to the right and t down, seen from outside (the side faces count u back from the A axis; top and bottom run with it)
+        var st = select(vec2<f32>(1.0 - a, 1.0 - b), vec2<f32>(a, b), face >= 4u);
+        if (turn == 1u) { st = vec2<f32>(st.y, 1.0 - st.x); }
+        else if (turn == 2u) { st = vec2<f32>(1.0 - st.x, 1.0 - st.y); }
+        else if (turn == 3u) { st = vec2<f32>(1.0 - st.y, st.x); }
+        let u0 = f32(fb & 255u) / 16.0;
+        let v0 = f32((fb >> 8u) & 255u) / 16.0;
+        let u1 = f32((fb >> 16u) & 255u) / 16.0;
+        let v1 = f32((fb >> 24u) & 255u) / 16.0;
+        uv = vec2<f32>(mix(u0, u1, st.x), mix(v0, v1, st.y));
+    }
+
     var local = origin + axisA * a + axisB * b;
     local.y = local.y + sectionY * 16.0;
-    let m = materials[blockType];
     // A thin block (carpet, rail, plate, snow layer): squashed toward its floor; the sides show the top strip of their texture, not the whole tile squeezed
     let thick = (m.flags >> 9u) & 15u;
     if (thick != 0u && face < 6u) {
@@ -201,6 +247,7 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     if ((f >> 1u) == 1u) { packed = m.l1; }
     if ((f >> 1u) == 2u) { packed = m.l2; }
     var tile = (packed >> ((f & 1u) * 16u)) & 0xFFFFu;
+    if (isShape) { tile = shapeTile; }
     // An animated tile plays through its timeline, one entry per tick (decided per vertex: all of a quad's vertices agree, it is flat)
     if (tile != NO_TEXTURE) {
         let anim = animTable[tile];
@@ -213,7 +260,8 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     // Colour before the texture: the tint (when the block is tinted, when THIS face is, or when there is no texture to show), else white;
     // times the face brightness. A grass block tints its top and not its sides: the mask is one bit per face (a plant uses face 0's).
     var base = vec3<f32>(1.0, 1.0, 1.0);
-    let faceTinted = ((m.flags >> (16u + f)) & 1u) != 0u;
+    var faceTinted = ((m.flags >> (16u + f)) & 1u) != 0u;
+    if (isShape) { faceTinted = shapeTinted; }
     if ((m.flags & FLAG_TINTED) != 0u || faceTinted || out.layer == NO_TEXTURE) {
         base = m.tint.xyz;
     }

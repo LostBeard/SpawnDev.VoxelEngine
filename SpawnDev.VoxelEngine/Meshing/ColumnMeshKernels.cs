@@ -367,6 +367,77 @@ namespace SpawnDev.VoxelEngine.Meshing
         }
 
         // ------------------------------------------------------------------------------------------------------------
+        // Shapes: the boxes of the blocks that are not cubes (stairs, slabs, fences, doors...)
+        // ------------------------------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// One thread per cell. A block whose class has <see cref="BlockClass.Shaped"/> emits, for every box of its slot in the shape table and every face of the box that has a
+        /// texture, a one-by-one quad flagged as a box face (<see cref="PackedQuad.PackShapeFace"/>). A face lying on the cell boundary is left out when the neighbour there is a block that
+        /// occludes (<paramref name="occlude"/> is the opaque pass occupancy, the ring of neighbouring columns included): nothing of it could be seen. Faces inside the cell stay, even where
+        /// two boxes touch.
+        /// </summary>
+        public static void ShapeKernel(
+            Index1D index,
+            ArrayView<ushort> column,
+            ArrayView<int> typeFlags,
+            ArrayView<uint> shapeWords,
+            ArrayView<long> occlude,
+            ArrayView<long> output,
+            ArrayView<int> counters,
+            int sectionCount)
+        {
+            int total = sectionCount * CellsPerSection;
+            if (index >= total) return;
+
+            int s = index / CellsPerSection;
+            int r = index - s * CellsPerSection;
+            int y = r / ColumnsCellsPerLayer;
+            int rem = r - y * ColumnsCellsPerLayer;
+            int z = rem / SectionSize;
+            int x = rem - z * SectionSize;
+
+            int type = TypeAt(column, x, z, y, s);
+            if (type == 0) return;
+            int flags = typeFlags[type];
+            if ((flags & BlockClass.Shaped) == 0) return;
+            int slot = (flags >> BlockClass.ShapeSlotShift) & BlockClass.ShapeSlotMask;
+
+            // What the neighbours of this cell do: the bits of the occupancy columns, as the face cull reads them
+            int p = s * PaddedCellsPerSection + (z + 1) * PaddedXZ + (x + 1);
+            long self = occlude[p] & 0xFFFFL;
+            long posX = occlude[p + 1], negX = occlude[p - 1], posZ = occlude[p + PaddedXZ], negZ = occlude[p - PaddedXZ];
+            long above = (self >> 1) | (s < sectionCount - 1 ? (occlude[p + PaddedCellsPerSection] & 1L) << 15 : 0L);
+            long below = ((self << 1) & 0xFFFFL) | (s > 0 ? (occlude[p - PaddedCellsPerSection] >> 15) & 1L : 0L);
+            long bit = 1L << y;
+            bool hidePosX = (posX & bit) != 0, hideNegX = (negX & bit) != 0, hidePosZ = (posZ & bit) != 0, hideNegZ = (negZ & bit) != 0;
+            bool hidePosY = (above & bit) != 0, hideNegY = (below & bit) != 0;
+
+            int slotBase = slot * (8 * 16);
+            for (int b = 0; b < 8; b++)
+            {
+                int boxBase = slotBase + b * 16;
+                uint w0 = shapeWords[boxBase];
+                if ((w0 >> 31) == 0) break;   // the boxes of a shape are the first ones of its slot
+                int x0 = (int)(w0 & 31u), y0 = (int)((w0 >> 5) & 31u), z0 = (int)((w0 >> 10) & 31u);
+                int x1 = (int)((w0 >> 15) & 31u), y1 = (int)((w0 >> 20) & 31u), z1 = (int)((w0 >> 25) & 31u);
+
+                for (int face = 0; face < 6; face++)
+                {
+                    if ((shapeWords[boxBase + 1 + 2 * face] & 0xFFFFu) == 0xFFFFu) continue;   // no texture: this face is not there
+                    bool hidden;
+                    if (face == 0) hidden = x1 == 16 && hidePosX;
+                    else if (face == 1) hidden = x0 == 0 && hideNegX;
+                    else if (face == 2) hidden = z1 == 16 && hidePosZ;
+                    else if (face == 3) hidden = z0 == 0 && hideNegZ;
+                    else if (face == 4) hidden = y1 == 16 && hidePosY;
+                    else hidden = y0 == 0 && hideNegY;
+                    if (hidden) continue;
+                    EmitQuad(output, counters, s, sectionCount, PackedQuad.PackShapeFace(x, y, z, face, type, b));
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------------------------------------------------
         // Compaction: per-section scratch slices -> one exact-size buffer
         // ------------------------------------------------------------------------------------------------------------
 

@@ -75,6 +75,14 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// </summary>
         public static uint TintFaces(int faceMask) => (uint)(faceMask & 63) << 16;
 
+        private const int ShapeShift = 22;
+
+        /// <summary>
+        /// The block is a SHAPE: its quads are faces of the boxes of slot <paramref name="slot"/> of the <see cref="ShapeTable"/> (the vertex shader places each by its box and takes the
+        /// tile, window and turn from the table, not from this material's faces). 0..1023. OR the result into <see cref="Flags"/>; the block's class says <see cref="Meshing.BlockClass.Shaped"/>.
+        /// </summary>
+        public static uint Shape(int slot) => (uint)(slot & 1023) << ShapeShift;
+
         /// <summary>A material that draws every face with the same texture layer.</summary>
         public static BlockMaterial Uniform(ushort layer, Vector3? tint = null, uint flags = 0, float alpha = 1f)
             => Create(layer, layer, layer, layer, layer, layer, tint, flags, alpha);
