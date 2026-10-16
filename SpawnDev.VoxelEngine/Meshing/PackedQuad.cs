@@ -28,10 +28,10 @@ namespace SpawnDev.VoxelEngine.Meshing
         public const int SectionIndexShift = 47;
         public const int SectionIndexMask = 0x1F;
 
-        /// <summary>Bit 52: the quad is a face of one BOX of a shaped block (<see cref="Rendering.ShapeTable"/>), not a cube face; bits 53-55 say which box (0-7).</summary>
+        /// <summary>Bit 52: the quad is a face of one BOX of a shaped block (<see cref="Rendering.ShapeTable"/>), not a cube face; bits 53-56 say which box (0-15).</summary>
         public const long ShapedFlag = 1L << 52;
         public const int BoxShift = 53;
-        public const int BoxMask = 7;
+        public const int BoxMask = 15;
 
         /// <summary>A quad for face <paramref name="face"/> of box <paramref name="box"/> of the shaped block of type <paramref name="blockType"/> in cell (x, y, z).</summary>
         public static long PackShapeFace(int x, int y, int z, int face, int blockType, int box)

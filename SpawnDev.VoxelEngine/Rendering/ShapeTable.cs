@@ -48,7 +48,7 @@ namespace SpawnDev.VoxelEngine.Rendering
     public sealed class ShapeTable
     {
         /// <summary>Boxes a shape can have.</summary>
-        public const int MaxBoxes = 8;
+        public const int MaxBoxes = 16;
         /// <summary>Slots the table has (the class table's and the material's bit fields hold 10 bits).</summary>
         public const int MaxSlots = 1024;
         /// <summary>32-bit words a box takes in <see cref="Words"/>.</summary>

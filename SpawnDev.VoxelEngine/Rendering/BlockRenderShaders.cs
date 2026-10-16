@@ -52,7 +52,7 @@ struct BlockMaterial {
 // Animated tiles: animTable[tile] = (offset into timeline, length), length 0 = not animated; timeline[offset + tick % length] = the tile shown
 @group(0) @binding(4) var<storage, read> animTable: array<vec2<u32>>;
 @group(0) @binding(5) var<storage, read> timeline: array<u32>;
-// The boxes of the shaped blocks (ShapeTable.Words): per slot 8 boxes of 16 words; word 0 the box (bit 31 = exists, x0 y0 z0 x1 y1 z1 in sixteenths, 5 bits each), then per face a tile word and a window word
+// The boxes of the shaped blocks (ShapeTable.Words): per slot 16 boxes of 16 words; word 0 the box (bit 31 = exists, x0 y0 z0 x1 y1 z1 in sixteenths, 5 bits each), then per face a tile word and a window word
 @group(0) @binding(6) var<storage, read> shapeWords: array<u32>;
 @group(1) @binding(0) var<storage, read> quads: array<vec2<u32>>;   // PackedQuad: i64 as (lo, hi)
 
@@ -170,9 +170,9 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     var shapeTinted = false;
     let m = materials[blockType];
     if (isShape) {
-        let boxIdx = (hi >> 21u) & 7u;
+        let boxIdx = (hi >> 21u) & 15u;
         let slot = (m.flags >> 22u) & 1023u;
-        let boxBase = (slot * 8u + boxIdx) * 16u;
+        let boxBase = (slot * 16u + boxIdx) * 16u;
         let w0 = shapeWords[boxBase];
         let bx0 = f32(w0 & 31u) / 16.0;
         let by0 = f32((w0 >> 5u) & 31u) / 16.0;

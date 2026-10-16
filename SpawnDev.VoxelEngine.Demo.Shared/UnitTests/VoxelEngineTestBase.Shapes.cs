@@ -37,7 +37,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             int second = ShapeTable.WordsPerSlot + ShapeTable.WordsPerBox;
             if ((words[second] >> 31) != 1 || (words[second] & 31) != 6) throw new Exception("the post is the second box of slot 1");
             if ((words[ShapeTable.WordsPerSlot + 2 * ShapeTable.WordsPerBox] >> 31) != 0) throw new Exception("a box that is not there has no exists bit");
-            try { table.Add(Enumerable.Repeat(slab, 9).ToArray()); throw new Exception("nine boxes must be refused"); } catch (ArgumentException) { }
+            try { table.Add(Enumerable.Repeat(slab, 17).ToArray()); throw new Exception("seventeen boxes must be refused"); } catch (ArgumentException) { }
             try { _ = new ShapeBox(0, 0, 0, 17, 1, 1, new ShapeFace[6]); throw new Exception("a box outside its cell must be refused"); } catch (ArgumentOutOfRangeException) { }
         });
 
@@ -205,6 +205,26 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             if (!ShDominant(got[0], 'g')) throw new Exception($"the post (second box of slot 1) is green, got {got[0]}");
             if (!ShDominant(got[1], 'r') || !ShDominant(got[3], 'r')) throw new Exception($"the step (first box) is red, got {got[1]} {got[3]}");
             if (!ShDominant(got[2], '0')) throw new Exception($"beside the post above the step there is nothing, got {got[2]}");
+        });
+
+        [TestMethod]
+        public async Task Shapes_ASlotWithManyBoxes_DrawsEveryOneOfThemTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            CmRequireGpuMeshing(accelerator);
+            // Tiles: 0 red, 1 green. Eleven one-sixteenth-wide posts side by side; the last (box 10) is green. A fence has nine boxes and a gate more, so the box number must reach past 8
+            var atlas = BaSolidAtlas(16, 2, 1, k => k == 1 ? ((byte)0, (byte)255, (byte)0, (byte)255) : ((byte)255, (byte)0, (byte)0, (byte)255));
+            var table = new ShapeTable();
+            table.Add(new[] { ShBox(0, 0, 0, 16, 16, 16, ShapeFace.Whole(1), ShapeFace.Whole(1), ShapeFace.Whole(1)) });   // slot 0: something else, so slot 1 is tested
+            var boxes = Enumerable.Range(0, 11).Select(i => ShBox(i, 0, 15, i + 1, 16, 16, ShapeFace.Whole(i == 10 ? 1 : 0), ShapeFace.None, ShapeFace.None)).ToArray();
+            table.Add(boxes);
+            var classes = new int[] { BlockClass.None, BlockClass.ShapeSlot(1) };
+            var materials = new[] { BlockMaterial.Missing, BlockMaterial.Uniform(0, flags: BlockMaterial.Shape(1)) };
+            var col = new ushort[16 * 16 * 16 * 2];
+            col[4 + 4 * 16 + 3 * 256] = 1;
+            // Front view: the cell is columns 24..40; box i (i/16 .. (i+1)/16 of the width) is column 24 + i
+            var got = await ShRender(device, queue, accelerator, atlas, 2, table, classes, materials, col, false, Enumerable.Range(0, 11).Select(i => (24 + i, 32)).ToArray());
+            for (int i = 0; i < 10; i++) if (!ShDominant(got[i], 'r')) throw new Exception($"box {i} is red, got {got[i]}");
+            if (!ShDominant(got[10], 'g')) throw new Exception($"box 10 (the eleventh) is green, got {got[10]}");
         });
 
         [TestMethod]

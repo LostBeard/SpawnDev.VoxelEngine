@@ -3,7 +3,7 @@
 ## Unreleased - thin blocks, plants that stand in water
 
 ### Added
-- **Shaped blocks: stairs, slabs, fences, doors... (`ShapeTable`, `BlockClass.Shaped`, `BlockMaterial.Shape`)**. A block that is not a cube is up to eight BOXES of its cell, each with six faces
+- **Shaped blocks: stairs, slabs, fences, doors... (`ShapeTable`, `BlockClass.Shaped`, `BlockMaterial.Shape`)**. A block that is not a cube is up to sixteen BOXES of its cell, each with six faces
   (an atlas tile, a window of the tile in sixteenths, a quarter-turn count, a tint flag). A block type gets a slot in a `ShapeTable` (1,024 slots) and says so in its class
   (`BlockClass.ShapeSlot(slot)`: emits no cube faces, hides nothing) and its material (`BlockMaterial.Shape(slot)`). `ColumnMesher.SetShapes(table)`: a new kernel (`ShapeKernel`, one thread per cell,
   right after the opaque pass) emits each box face that can be seen as a one-by-one quad flagged `PackedQuad.ShapedFlag` with its box number, into the opaque list - faces on the cell boundary against an
