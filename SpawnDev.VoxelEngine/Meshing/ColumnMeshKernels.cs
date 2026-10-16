@@ -412,8 +412,8 @@ namespace SpawnDev.VoxelEngine.Meshing
             bool hidePosX = (posX & bit) != 0, hideNegX = (negX & bit) != 0, hidePosZ = (posZ & bit) != 0, hideNegZ = (negZ & bit) != 0;
             bool hidePosY = (above & bit) != 0, hideNegY = (below & bit) != 0;
 
-            int slotBase = slot * (16 * 16);
-            for (int b = 0; b < 16; b++)
+            int slotBase = slot * (32 * 16);
+            for (int b = 0; b < 32; b++)
             {
                 int boxBase = slotBase + b * 16;
                 uint w0 = shapeWords[boxBase];
