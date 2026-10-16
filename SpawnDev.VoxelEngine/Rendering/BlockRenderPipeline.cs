@@ -291,9 +291,12 @@ namespace SpawnDev.VoxelEngine.Rendering
             _queue.WriteBuffer(_frameBuffer, 0, bytes);
         }
 
-        /// <summary>Begin the frame's render pass: clears colour and depth (reversed-Z: 0 is the far plane).</summary>
+        /// <summary>
+        /// Begin the frame's render pass: clears colour and depth (reversed-Z: 0 is the far plane). <paramref name="clearAlpha"/> below 1 clears to a premultiplied see-through colour
+        /// (augmented reality: what is not drawn shows the camera feed).
+        /// </summary>
         public GPURenderPassEncoder BeginRenderPass(GPUCommandEncoder encoder, GPUTextureView colorTarget, GPUTextureView depthTarget,
-            Vector3 clearColor)
+            Vector3 clearColor, float clearAlpha = 1f)
         {
             return encoder.BeginRenderPass(new GPURenderPassDescriptor
             {
@@ -304,7 +307,7 @@ namespace SpawnDev.VoxelEngine.Rendering
                         View = colorTarget,
                         LoadOp = GPULoadOp.Clear,
                         StoreOp = GPUStoreOp.Store,
-                        ClearValue = new double[] { clearColor.X, clearColor.Y, clearColor.Z, 1.0 },
+                        ClearValue = new double[] { clearColor.X * clearAlpha, clearColor.Y * clearAlpha, clearColor.Z * clearAlpha, clearAlpha },
                     },
                 },
                 DepthStencilAttachment = new GPURenderPassDepthStencilAttachment

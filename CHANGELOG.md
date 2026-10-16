@@ -3,6 +3,7 @@
 ## Unreleased - thin blocks, plants that stand in water
 
 ### Added
+- **`BlockRenderPipeline.BeginRenderPass(..., clearAlpha)`**: a clear alpha below 1 clears to the premultiplied see-through colour (augmented reality: what is not drawn shows the camera feed). Default 1, nothing changes for callers that do not pass it.
 - **Shaped blocks: stairs, slabs, fences, doors... (`ShapeTable`, `BlockClass.Shaped`, `BlockMaterial.Shape`)**. A block that is not a cube is up to thirty-two BOXES of its cell, each with six faces
   (an atlas tile, a window of the tile in sixteenths, a quarter-turn count, a tint flag). A block type gets a slot in a `ShapeTable` (1,024 slots) and says so in its class
   (`BlockClass.ShapeSlot(slot)`: emits no cube faces, hides nothing) and its material (`BlockMaterial.Shape(slot)`). `ColumnMesher.SetShapes(table)`: a new kernel (`ShapeKernel`, one thread per cell,
