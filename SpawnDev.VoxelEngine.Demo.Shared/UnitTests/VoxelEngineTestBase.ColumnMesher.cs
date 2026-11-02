@@ -31,11 +31,22 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
 
         private const int CmXZ = 16;
 
-        private static void CmRequireGpuMeshing(Accelerator accelerator)
+        private static void CmRequireGpuMeshing(Accelerator accelerator) => RequireGpuMeshing(accelerator, "ColumnMesher");
+
+        /// <summary>
+        /// The GPU meshers and the GPU cull take output slots from Atomic.Add and clear masks with 64-bit Atomic.And
+        /// (MeshingSupport): a device without atomics (WebGL) skips, the way the meshers refuse it.
+        /// </summary>
+        private static void RequireGpuMeshing(Accelerator accelerator, string what)
         {
-            // The kernels use atomics (quad counters, mask clears) and write several elements per thread: not WebGL
-            if (!accelerator.Device.Satisfies(new AcceleratorRequirements { RequiresAtomics = true, RequiresScatterStores = true, RequiresInt64 = true }))
-                throw new UnsupportedTestException($"ColumnMesher needs atomics + scatter stores; {accelerator.GetType().Name} has not");
+            if (!MeshingSupport.IsSupported(accelerator))
+                throw new UnsupportedTestException($"{what} needs atomics + scatter stores + 64-bit integers; {accelerator.GetType().Name} has not");
+        }
+
+        private static VoxelMeshPipeline NewPipelineOrSkip(Accelerator accelerator)
+        {
+            RequireGpuMeshing(accelerator, nameof(VoxelMeshPipeline));
+            return new VoxelMeshPipeline(accelerator);
         }
 
         private static int CmIdx(int x, int y, int z) => x + z * CmXZ + y * CmXZ * CmXZ;

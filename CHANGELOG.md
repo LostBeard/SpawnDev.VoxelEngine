@@ -3,6 +3,15 @@
 ## Unreleased - thin blocks, plants that stand in water
 
 ### Changed
+- **The GPU meshers refuse a device without atomics (`MeshingSupport`)** (built as 0.2.0-rc.5-local.21). `ColumnMesher`,
+  `HeightmapMesher` and `VoxelMeshPipeline` take every output quad's slot from `Atomic.Add`'s return value and clear face masks
+  with 64-bit `Atomic.And`; WebGL2 has no atomics and ILGPU's emulation returns 0, so on WebGL every quad landed in slot 0 (the
+  2026-11-02 sweep on ILGPU 5.4.14: 28 WebGL failures, all of the old pipeline's tests and the GPU frustum cull, which had no skip
+  where `ColumnMesher`'s tests already had one). Their constructors now throw `NotSupportedException` naming the mesher on such a
+  device: use WebGPU or a desktop backend. `MeshingSupport.IsSupported(accelerator)` tells a caller first. An atomic-free path
+  for WebGL (flags, ILGPU's global scan, a scatter) is possible and not written yet. Test:
+  `Meshers_RefuseADeviceWithoutAtomics_AndBuildOnOneWith` on every backend (red on WebGL without the guard); full sweep 1894 passed,
+  0 failed, 611 skipped.
 - **Dependencies: SpawnDev.ILGPU 5.3.7 -> 5.4.14, SpawnDev.SpawnJS.Blazor 3.0.4 -> 3.0.7** (built as 0.2.0-rc.5-local.20). ILGPU 5.4.x brings O2 as the default optimization level, Velocity as the desktop CPU backend and the WebGPU loop / sub-view / sub-word fixes of 5.4.1-5.4.14.
 
 ### Added

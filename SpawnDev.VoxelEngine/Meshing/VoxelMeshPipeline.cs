@@ -64,6 +64,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// </summary>
         public VoxelMeshPipeline(Accelerator accelerator)
         {
+            MeshingSupport.Require(accelerator, nameof(VoxelMeshPipeline));
             _accelerator = accelerator;
 
             // Compile kernels once

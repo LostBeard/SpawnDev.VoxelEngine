@@ -48,6 +48,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         public HeightmapMesher(Accelerator accelerator, int sectionCount = 24)
         {
             if (sectionCount < 1) throw new ArgumentOutOfRangeException(nameof(sectionCount));
+            MeshingSupport.Require(accelerator, nameof(HeightmapMesher));
             _accelerator = accelerator;
             _sections = sectionCount;
 

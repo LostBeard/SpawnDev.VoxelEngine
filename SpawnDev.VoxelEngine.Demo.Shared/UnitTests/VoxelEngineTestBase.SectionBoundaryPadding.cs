@@ -33,7 +33,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                     for (int x = 1; x <= ss; x++)
                         padded[x + z * paddedXZ + y * paddedXZ * paddedXZ] = PackedBlock.Pack(1);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var result = await pipeline.MeshSectionAsync(padded, ss, height);
             try
             {
@@ -72,7 +72,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                     for (int x = 0; x < paddedXZ; x++)
                         padded[x + z * paddedXZ + y * paddedXZ * paddedXZ] = PackedBlock.Pack(1);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var result = await pipeline.MeshSectionAsync(padded, ss, height);
             try
             {
@@ -126,7 +126,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 for (int z = 1; z <= ss; z++)
                     padded[(paddedXZ - 1) + z * paddedXZ + y * paddedXZ * paddedXZ] = PackedBlock.Pack(1);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var result = await pipeline.MeshSectionAsync(padded, ss, height);
             try
             {
@@ -182,7 +182,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                     for (int x = 1; x <= ss; x++)
                         padded[x + z * paddedXZ + y * paddedXZ * paddedXZ] = PackedBlock.Pack(1);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var result = await pipeline.MeshSectionAsync(padded, ss, height,
                 yPadMinusSlab: null, yPadPlusSlab: null);
             try
@@ -238,7 +238,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                     yPadPlus[x + z * paddedXZ] = PackedBlock.Pack(1);
                 }
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var result = await pipeline.MeshSectionAsync(padded, ss, height, yPadMinus, yPadPlus);
             try
             {
@@ -289,7 +289,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 for (int x = 1; x <= ss; x++)
                     yPadPlus[x + z * paddedXZ] = PackedBlock.Pack(1);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var result = await pipeline.MeshSectionAsync(padded, ss, height,
                 yPadMinusSlab: null, yPadPlusSlab: yPadPlus);
             try
@@ -340,7 +340,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
                 for (int x = 1; x <= ss; x++)
                     yPadPlus[x + z * paddedXZ] = PackedBlock.Pack(1);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var result = await pipeline.MeshSectionAsync(padded, ss, height,
                 yPadMinusSlab: null, yPadPlusSlab: yPadPlus);
             try
@@ -394,7 +394,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var padded = new int[paddedXZ * paddedXZ * height];
             var badSlab = new int[4]; // clearly wrong size
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             try
             {
                 await pipeline.MeshSectionAsync(padded, ss, height, yPadMinusSlab: badSlab);

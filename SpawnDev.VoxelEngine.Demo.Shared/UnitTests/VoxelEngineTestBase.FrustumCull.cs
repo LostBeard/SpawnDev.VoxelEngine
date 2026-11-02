@@ -182,6 +182,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             float[] chunkCenters, float halfX, float halfY, float halfZ,
             float[] frustumPlanes, float cameraX, float cameraY, float cameraZ, float fogDistSq)
         {
+            RequireGpuMeshing(accelerator, "FrustumFogCullKernel");
             int chunkCount = chunkCenters.Length / 3;
 
             using var gpuCenters = accelerator.Allocate1D(chunkCenters);

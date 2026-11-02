@@ -89,6 +89,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             if (cpuError != null) throw new Exception($"CPU reference coverage error: {cpuError}");
 
             // === GPU Pipeline ===
+            RequireGpuMeshing(accelerator, "GreedyMergeKernels"); // slots from Atomic.Add, masks cleared with 64-bit Atomic.And
             // Step 1: Occupancy
             using var gpuBlocks = accelerator.Allocate1D(paddedBlocks);
             using var gpuOccupancy = accelerator.Allocate1D<long>(paddedXZ * paddedXZ);

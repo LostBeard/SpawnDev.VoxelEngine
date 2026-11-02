@@ -52,7 +52,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         {
             var blocks = new byte[TestSectionSize * TestSectionSize * TestTotalHeight]; // all zero
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var results = await pipeline.MeshChunkColumnAsync(
                 blocks, null, null, null, null,
                 TestSectionSize, TestTotalHeight);
@@ -71,7 +71,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
                 (x, y, z) => (y >= 4 && y < 8) ? (byte)1 : (byte)0);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var results = await pipeline.MeshChunkColumnAsync(
                 blocks, null, null, null, null,
                 TestSectionSize, TestTotalHeight);
@@ -103,7 +103,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
                 (x, y, z) => (y >= 8 && y < 12) ? (byte)1 : (byte)0);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
 
             // New API
             var results = await pipeline.MeshChunkColumnAsync(
@@ -168,7 +168,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var nxPlus = BuildColumn(TestSectionSize, TestTotalHeight,
                 (x, y, z) => (y >= 4 && y < 8) ? (byte)1 : (byte)0);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var results = await pipeline.MeshChunkColumnAsync(
                 blocks, null, nxPlus, null, null,
                 TestSectionSize, TestTotalHeight);
@@ -211,7 +211,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
                 (x, y, z) => (y >= 4 && y < 12) ? (byte)1 : (byte)0);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var results = await pipeline.MeshChunkColumnAsync(
                 blocks, null, null, null, null,
                 TestSectionSize, TestTotalHeight);
@@ -264,7 +264,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var blocks = new byte[TestSectionSize * TestSectionSize * TestTotalHeight];
             var badNeighbor = new byte[4]; // wrong size
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             try
             {
                 await pipeline.MeshChunkColumnAsync(
@@ -283,7 +283,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         {
             var badBlocks = new byte[4]; // wrong size
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             try
             {
                 await pipeline.MeshChunkColumnAsync(
@@ -303,7 +303,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             // totalHeight 17 is not a multiple of sectionSize 4
             var blocks = new byte[TestSectionSize * TestSectionSize * 17];
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             try
             {
                 await pipeline.MeshChunkColumnAsync(
@@ -324,7 +324,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
                 (x, y, z) => (y < 4 || y >= 12) ? (byte)1 : (byte)0);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var results = await pipeline.MeshChunkColumnAsync(
                 blocks, null, null, null, null,
                 TestSectionSize, TestTotalHeight,
@@ -352,7 +352,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
                 (x, y, z) => (y < 4 || y >= 12) ? (byte)1 : (byte)0);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var results = await pipeline.MeshChunkColumnSectionsAsync(
                 blocks, new[] { 3 },
                 null, null, null, null,
@@ -379,7 +379,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             var blocks = BuildColumn(TestSectionSize, TestTotalHeight,
                 (x, y, z) => (y >= 4 && y < 8) ? (byte)1 : (byte)0);
 
-            using var pipeline = new VoxelMeshPipeline(accelerator);
+            using var pipeline = NewPipelineOrSkip(accelerator);
             var a = await pipeline.MeshChunkColumnAsync(
                 blocks, null, null, null, null, TestSectionSize, TestTotalHeight);
             var b = await pipeline.MeshChunkColumnAsync(

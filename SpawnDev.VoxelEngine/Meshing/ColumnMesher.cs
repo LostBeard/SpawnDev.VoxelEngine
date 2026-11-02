@@ -168,6 +168,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         public ColumnMesher(Accelerator accelerator, int sectionCount = 24)
         {
             if (sectionCount < 1) throw new ArgumentOutOfRangeException(nameof(sectionCount));
+            MeshingSupport.Require(accelerator, nameof(ColumnMesher));
             _accelerator = accelerator;
             _sections = sectionCount;
             _columnLength = ColumnMeshKernels.SectionSize * ColumnMeshKernels.SectionSize * ColumnMeshKernels.SectionSize * sectionCount;
