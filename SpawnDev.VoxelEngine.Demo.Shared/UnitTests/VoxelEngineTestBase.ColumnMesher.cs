@@ -472,6 +472,53 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             CmAssertSame(CmExpectedPlants(ids, sections), await CmDecode(mesh.Plants, "plants"), "JS-uploaded column / plants");
         });
 
+        [TestMethod]
+        public async Task ColumnMesher_ColumnFromBytes_MeshesLikeAManagedOne_AndIsRewrittenInPlaceTest() => await RunTest(async accelerator =>
+        {
+            CmRequireGpuMeshing(accelerator);
+            const int sections = 3;
+            using var mesher = new ColumnMesher(accelerator, sections);
+            mesher.SetBlockClasses(CmFlags);
+            var ids = CmTerrain(sections, 5);
+            var bytes = new byte[ids.Length];
+            for (int i = 0; i < ids.Length; i++)
+            {
+                if (ids[i] > 255) throw new Exception($"the test terrain uses types a byte cannot hold: {ids[i]}");
+                bytes[i] = (byte)ids[i];
+            }
+
+            using var buffer = mesher.CreateColumnBuffer(bytes);
+            using (var mesh = await mesher.MeshAsync(buffer))
+            {
+                if (mesh.Overflow != 0) throw new Exception("overflow");
+                CmAssertSame(CmExpectedCubeFaces(ids, new ushort[]?[4], sections, BlockClass.OpaqueShift, true), await CmDecode(mesh.Opaque, "opaque"), "byte column / opaque");
+            }
+
+            // An edit: another terrain written into the SAME buffer, then meshed again: the faces are the other terrain's
+            var other = CmTerrain(sections, 9);
+            var otherBytes = new byte[other.Length];
+            for (int i = 0; i < other.Length; i++) otherBytes[i] = (byte)other[i];
+            mesher.WriteColumnBuffer(buffer, otherBytes);
+            using (var mesh = await mesher.MeshAsync(buffer))
+                CmAssertSame(CmExpectedCubeFaces(other, new ushort[]?[4], sections, BlockClass.OpaqueShift, true), await CmDecode(mesh.Opaque, "opaque"), "rewritten in place / opaque");
+
+            // The ushort overloads do the same
+            mesher.WriteColumnBuffer(buffer, ids.AsSpan());
+            using (var mesh = await mesher.MeshAsync(buffer))
+                CmAssertSame(CmExpectedCubeFaces(ids, new ushort[]?[4], sections, BlockClass.OpaqueShift, true), await CmDecode(mesh.Opaque, "opaque"), "ushort rewrite / opaque");
+            using var fromWide = mesher.CreateColumnBuffer(ids.AsSpan());
+            using (var mesh = await mesher.MeshAsync(fromWide))
+                CmAssertSame(CmExpectedCubeFaces(ids, new ushort[]?[4], sections, BlockClass.OpaqueShift, true), await CmDecode(mesh.Opaque, "opaque"), "ushort column / opaque");
+
+            // The wrong length is refused, in both
+            bool threw = false;
+            try { mesher.CreateColumnBuffer(new byte[100]).Dispose(); } catch (ArgumentException) { threw = true; }
+            if (!threw) throw new Exception("a short column of bytes must be rejected");
+            threw = false;
+            try { mesher.WriteColumnBuffer(buffer, new byte[100]); } catch (ArgumentException) { threw = true; }
+            if (!threw) throw new Exception("a short rewrite must be rejected");
+        });
+
         // =====================================================================
         // The section index inside the quad (one draw per column instead of one per section)
         // =====================================================================

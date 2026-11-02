@@ -154,6 +154,95 @@ namespace SpawnDev.VoxelEngine.Meshing
         }
 
         // ------------------------------------------------------------------------------------------------------------
+        // Stage 2b: ambient occlusion of the visible faces (optional, <see cref="ColumnMesher.AmbientOcclusion"/>)
+        // ------------------------------------------------------------------------------------------------------------
+
+        /// <summary>Faces' axes as the vertex shader has them (the quad's A and B axes and the outward normal): index face * 9 + { n, a, b } * 3 + { x, y, z }.</summary>
+        private static int FaceAxis(int face, int which, int component)
+        {
+            // +X: A +Z, B +Y | -X: A -Z, B +Y | +Z: A -X, B +Y | -Z: A +X, B +Y | +Y: A +X, B +Z | -Y: A +X, B -Z
+            int nx = 0, ny = 0, nz = 0, ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0;
+            if (face == 0) { nx = 1; az = 1; by = 1; }
+            else if (face == 1) { nx = -1; az = -1; by = 1; }
+            else if (face == 2) { nz = 1; ax = -1; by = 1; }
+            else if (face == 3) { nz = -1; ax = 1; by = 1; }
+            else if (face == 4) { ny = 1; ax = 1; bz = 1; }
+            else { ny = -1; ax = 1; bz = -1; }
+            if (which == 0) return component == 0 ? nx : (component == 1 ? ny : nz);
+            if (which == 1) return component == 0 ? ax : (component == 1 ? ay : az);
+            return component == 0 ? bx : (component == 1 ? by : bz);
+        }
+
+        /// <summary>1 when the cell (x, y, z) of section s (x, z in -1..16 of the padded grid, y in -1..16: the next section's cells above and below) occludes, 0 where it does not or where nothing is loaded (a missing neighbour column is open for this: no dark seam at the edge of the loaded world).</summary>
+        private static int SolidAt(ArrayView<long> occlude, int s, int x, int y, int z, int sectionCount, int missingMask)
+        {
+            int section = s;
+            if (y < 0) { section--; y += SectionSize; }
+            else if (y >= SectionSize) { section++; y -= SectionSize; }
+            if (section < 0 || section >= sectionCount) return 0;
+            bool xIn = x >= 0 && x < SectionSize, zIn = z >= 0 && z < SectionSize;
+            if (!xIn && !zIn) return 0;
+            if (!xIn && (x < 0 ? (missingMask & 1) != 0 : (missingMask & 2) != 0)) return 0;
+            if (!zIn && (z < 0 ? (missingMask & 4) != 0 : (missingMask & 8) != 0)) return 0;
+            long bits = occlude[section * PaddedCellsPerSection + (z + 1) * PaddedXZ + (x + 1)];
+            return (int)((bits >> y) & 1L);
+        }
+
+        /// <summary>
+        /// The ambient occlusion of the four corners of a face of the cell (x, y, z) as 2 bits each (0 open .. 3 shut), corner c = a * 2 + b in the quad's own axes (the vertex shader's order): the two cells beside the
+        /// corner in the layer in front of the face and the one between them - both sides solid is as dark as all three. Corner c is in bits 2c..2c+1.
+        /// </summary>
+        public static int CellAo(ArrayView<long> occlude, int s, int x, int y, int z, int face, int sectionCount, int missingMask)
+        {
+            int fx = x + FaceAxis(face, 0, 0), fy = y + FaceAxis(face, 0, 1), fz = z + FaceAxis(face, 0, 2);
+            int result = 0;
+            for (int c = 0; c < 4; c++)
+            {
+                int sa = (c >> 1) == 1 ? 1 : -1, sb = (c & 1) == 1 ? 1 : -1;
+                int dax = sa * FaceAxis(face, 1, 0), day = sa * FaceAxis(face, 1, 1), daz = sa * FaceAxis(face, 1, 2);
+                int dbx = sb * FaceAxis(face, 2, 0), dby = sb * FaceAxis(face, 2, 1), dbz = sb * FaceAxis(face, 2, 2);
+                int side1 = SolidAt(occlude, s, fx + dax, fy + day, fz + daz, sectionCount, missingMask);
+                int side2 = SolidAt(occlude, s, fx + dbx, fy + dby, fz + dbz, sectionCount, missingMask);
+                int corner = SolidAt(occlude, s, fx + dax + dbx, fy + day + dby, fz + daz + dbz, sectionCount, missingMask);
+                int v = side1 == 1 && side2 == 1 ? 3 : side1 + side2 + corner;
+                result |= v << (2 * c);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// One thread per (section, x, z). For every visible face of the column of cells (a set bit of the face masks) writes its <see cref="CellAo"/> to ao[(s * 6 + face) * 4096 + y * 256 + z * 16 + x]. Run after the
+        /// face cull and before the merge, in the opaque pass only.
+        /// </summary>
+        public static void AoKernel(Index1D index, ArrayView<long> occlude, ArrayView<long> faceMasks, ArrayView<int> ao, int sectionCount, int missingMask)
+        {
+            int total = sectionCount * ColumnsCellsPerLayer;
+            if (index >= total) return;
+            int s = index / ColumnsCellsPerLayer;
+            int r = index - s * ColumnsCellsPerLayer;
+            int z = r / SectionSize;
+            int x = r - z * SectionSize;
+            for (int face = 0; face < 6; face++)
+            {
+                long mask = faceMasks[(s * 6 + face) * ColumnsCellsPerLayer + r];
+                for (int y = 0; y < SectionSize; y++)
+                    if (((mask >> y) & 1L) != 0)
+                        ao[(s * 6 + face) * CellsPerSection + y * ColumnsCellsPerLayer + r] = CellAo(occlude, s, x, y, z, face, sectionCount, missingMask);
+            }
+        }
+
+        // A cell's AO is the same along the quad's A axis (corners 0 = 2 and 1 = 3) / along its B axis (0 = 1 and 2 = 3): only then can cells be merged in that direction and still interpolate to the right values
+        private static bool AoConstantAlongA(int ao) => (ao & 3) == ((ao >> 4) & 3) && ((ao >> 2) & 3) == ((ao >> 6) & 3);
+        private static bool AoConstantAlongB(int ao) => (ao & 3) == ((ao >> 2) & 3) && ((ao >> 4) & 3) == ((ao >> 6) & 3);
+
+        // What cells must have in common to merge: the block type and (with AO) the AO of the corners, in the bits above the type
+        private static int KeyAt(ArrayView<ushort> column, ArrayView<int> ao, int useAo, int s, int face, int x, int y, int z)
+        {
+            int type = TypeAt(column, x, z, y, s);
+            return useAo == 0 ? type : type | (ao[(s * 6 + face) * CellsPerSection + y * ColumnsCellsPerLayer + z * SectionSize + x] << 12);
+        }
+
+        // ------------------------------------------------------------------------------------------------------------
         // Stage 3: greedy merge (the logic of GreedyMergeKernels, per section, into per-section slices of a scratch buffer)
         // ------------------------------------------------------------------------------------------------------------
 
@@ -169,8 +258,10 @@ namespace SpawnDev.VoxelEngine.Meshing
             ArrayView<ushort> column,
             ArrayView<long> output,
             ArrayView<int> counters,
+            ArrayView<int> ao,
             int faceStart,
-            int sectionCount)
+            int sectionCount,
+            int useAo)
         {
             int faceCount = faceStart == 0 ? 4 : 2;
             int perSection = faceCount * SectionSize;
@@ -183,9 +274,9 @@ namespace SpawnDev.VoxelEngine.Meshing
             int face = faceStart + faceInGroup;
 
             if (face >= 4)
-                MergeXZPlane(faceMasks, column, output, counters, s, layer, face, sectionCount);
+                MergeXZPlane(faceMasks, column, output, counters, ao, useAo, s, layer, face, sectionCount);
             else
-                MergePerpendicularPlane(faceMasks, column, output, counters, s, layer, face, sectionCount);
+                MergePerpendicularPlane(faceMasks, column, output, counters, ao, useAo, s, layer, face, sectionCount);
         }
 
         private static void EmitQuad(ArrayView<long> output, ArrayView<int> counters, int s, int sectionCount, long quad)
@@ -206,7 +297,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             => column[x + z * SectionSize + (s * SectionSize + y) * ColumnsCellsPerLayer] & 0xFFF;
 
         private static void MergeXZPlane(
-            ArrayView<long> faceMasks, ArrayView<ushort> column, ArrayView<long> output, ArrayView<int> counters,
+            ArrayView<long> faceMasks, ArrayView<ushort> column, ArrayView<long> output, ArrayView<int> counters, ArrayView<int> ao, int useAo,
             int s, int yLayer, int face, int sectionCount)
         {
             int faceOffset = (s * 6 + face) * ColumnsCellsPerLayer;
@@ -223,26 +314,29 @@ namespace SpawnDev.VoxelEngine.Meshing
                         continue;
                     }
 
-                    int blockType = TypeAt(column, x, z, yLayer, s);
+                    int key = KeyAt(column, ao, useAo, s, face, x, yLayer, z);
+                    int blockType = key & 0xFFF;
+                    int cellAo = key >> 12;
 
+                    // With AO, cells merge only along an axis the AO does not change along (the quad's corners then give every cell's own)
                     int w = 1;
-                    while (x + w < SectionSize)
+                    while (x + w < SectionSize && (useAo == 0 || AoConstantAlongA(cellAo)))
                     {
                         long nextMask = faceMasks[faceOffset + (x + w) + z * SectionSize];
                         if ((nextMask & (1L << yLayer)) == 0) break;
-                        if (TypeAt(column, x + w, z, yLayer, s) != blockType) break;
+                        if (KeyAt(column, ao, useAo, s, face, x + w, yLayer, z) != key) break;
                         w++;
                     }
 
                     int h = 1;
-                    bool canExtend = true;
+                    bool canExtend = useAo == 0 || AoConstantAlongB(cellAo);
                     while (z + h < SectionSize && canExtend)
                     {
                         for (int dx = 0; dx < w; dx++)
                         {
                             long checkMask = faceMasks[faceOffset + (x + dx) + (z + h) * SectionSize];
                             if ((checkMask & (1L << yLayer)) == 0) { canExtend = false; break; }
-                            if (TypeAt(column, x + dx, z + h, yLayer, s) != blockType) { canExtend = false; break; }
+                            if (KeyAt(column, ao, useAo, s, face, x + dx, yLayer, z + h) != key) { canExtend = false; break; }
                         }
                         if (canExtend) h++;
                     }
@@ -252,14 +346,14 @@ namespace SpawnDev.VoxelEngine.Meshing
                         for (int dx = 0; dx < w; dx++)
                             Atomic.And(ref faceMasks[faceOffset + (x + dx) + (z + dz) * SectionSize], ~(1L << yLayer));
 
-                    EmitQuad(output, counters, s, sectionCount, PackedQuad.Pack(x, yLayer, z, w, h, face, blockType));
+                    EmitQuad(output, counters, s, sectionCount, PackedQuad.Pack(x, yLayer, z, w, h, face, blockType, ao: cellAo));
                     x += w;
                 }
             }
         }
 
         private static void MergePerpendicularPlane(
-            ArrayView<long> faceMasks, ArrayView<ushort> column, ArrayView<long> output, ArrayView<int> counters,
+            ArrayView<long> faceMasks, ArrayView<ushort> column, ArrayView<long> output, ArrayView<int> counters, ArrayView<int> ao, int useAo,
             int s, int layer, int face, int sectionCount)
         {
             int faceOffset = (s * 6 + face) * ColumnsCellsPerLayer;
@@ -280,12 +374,14 @@ namespace SpawnDev.VoxelEngine.Meshing
 
                     int px = isXFace ? layer : outer;
                     int pz = isXFace ? outer : layer;
-                    int blockType = TypeAt(column, px, pz, y, s);
+                    int key = KeyAt(column, ao, useAo, s, face, px, y, pz);
+                    int blockType = key & 0xFFF;
+                    int cellAo = key >> 12;
 
                     int h = 1;
-                    while (y + h < SectionSize && (mask & (1L << (y + h))) != 0)
+                    while (y + h < SectionSize && (useAo == 0 || AoConstantAlongB(cellAo)) && (mask & (1L << (y + h))) != 0)
                     {
-                        if (TypeAt(column, px, pz, y + h, s) != blockType) break;
+                        if (KeyAt(column, ao, useAo, s, face, px, y + h, pz) != key) break;
                         h++;
                     }
 
@@ -294,7 +390,7 @@ namespace SpawnDev.VoxelEngine.Meshing
                     faceMasks[faceOffset + innerIdx] = mask;
 
                     int w = 1;
-                    while (outer + w < SectionSize)
+                    while (outer + w < SectionSize && (useAo == 0 || AoConstantAlongA(cellAo)))
                     {
                         int nx = isXFace ? layer : outer + w;
                         int nz = isXFace ? outer + w : layer;
@@ -305,7 +401,7 @@ namespace SpawnDev.VoxelEngine.Meshing
                         for (int dy = 0; dy < h; dy++)
                         {
                             if ((nextMask & (1L << (y + dy))) == 0) { allMatch = false; break; }
-                            if (TypeAt(column, nx, nz, y + dy, s) != blockType) { allMatch = false; break; }
+                            if (KeyAt(column, ao, useAo, s, face, nx, y + dy, nz) != key) { allMatch = false; break; }
                         }
                         if (!allMatch) break;
 
@@ -317,7 +413,7 @@ namespace SpawnDev.VoxelEngine.Meshing
 
                     int qx = isXFace ? layer : outer;
                     int qz = isXFace ? outer : layer;
-                    EmitQuad(output, counters, s, sectionCount, PackedQuad.Pack(qx, y, qz, w, h, face, blockType));
+                    EmitQuad(output, counters, s, sectionCount, PackedQuad.Pack(qx, y, qz, w, h, face, blockType, ao: cellAo));
                 }
             }
         }

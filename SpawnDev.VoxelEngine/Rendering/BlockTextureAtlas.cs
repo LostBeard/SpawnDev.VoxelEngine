@@ -7,7 +7,7 @@ namespace SpawnDev.VoxelEngine.Rendering
     /// A tile's number is its place in the grid, row-major from the top-left (tileY * <see cref="TilesPerRow"/> + tileX), and that
     /// number is what a <see cref="BlockMaterial"/> face names.
     ///
-    /// The shader fetches texels exactly (no sampler) and tiles a tile across a greedy-merged quad itself, so the atlas has none of a
+    /// The shader fetches texels exactly (no sampler), from the level that fits how small the block is on screen, and tiles a tile across a greedy-merged quad itself, so the atlas has none of a
     /// texture array's limits: WebGPU guarantees only 256 array layers, a game's block textures (with every frame of every animated
     /// one) are several thousand tiles, and a 2D texture holds as many as its side allows (8192 px = 512 tiles of 16 px a side).
     /// </summary>
@@ -21,9 +21,12 @@ namespace SpawnDev.VoxelEngine.Rendering
         public int TilesPerRow { get; }
         public int TileRows { get; }
         public int TileCount => TilesPerRow * TileRows;
+        /// <summary>The levels of the texture: 1 is the tiles at full size, each one after it half as big (see <see cref="AtlasMipGenerator"/>). The shader picks by how small a block is on screen, so far ground does not sparkle.</summary>
+        public int MipLevels { get; }
 
-        private BlockTextureAtlas(GPUTexture texture, GPUTextureView view, int tileSize, int tilesPerRow, int tileRows)
+        private BlockTextureAtlas(GPUTexture texture, GPUTextureView view, int tileSize, int tilesPerRow, int tileRows, int mipLevels)
         {
+            MipLevels = mipLevels;
             Texture = texture;
             View = view;
             TileSize = tileSize;
@@ -38,18 +41,21 @@ namespace SpawnDev.VoxelEngine.Rendering
         public static BlockTextureAtlas FromRgba(GPUDevice device, GPUQueue queue, Uint8Array rgba, int width, int height, int tileSize)
         {
             Validate(rgba.Length, width, height, tileSize);
+            int levels = AtlasMipGenerator.LevelsFor(tileSize);
             var texture = device.CreateTexture(new GPUTextureDescriptor
             {
                 Size = new[] { width, height },
                 Format = "rgba8unorm",
-                Usage = GPUTextureUsage.TextureBinding | GPUTextureUsage.CopyDst,
+                MipLevelCount = levels,
+                Usage = GPUTextureUsage.TextureBinding | GPUTextureUsage.CopyDst | GPUTextureUsage.RenderAttachment,
             });
             queue.WriteTexture(
                 new GPUTexelCopyTextureInfo { Texture = texture },
                 rgba,
                 new GPUTexelCopyBufferLayout { BytesPerRow = (uint)(width * 4), RowsPerImage = (uint)height },
                 new GPUExtent3DDict { Width = (uint)width, Height = (uint)height });
-            return new BlockTextureAtlas(texture, texture.CreateView(), tileSize, width / tileSize, height / tileSize);
+            AtlasMipGenerator.Generate(device, queue, texture, levels);
+            return new BlockTextureAtlas(texture, texture.CreateView(), tileSize, width / tileSize, height / tileSize, levels);
         }
 
         /// <summary>The same for pixels that are already in .NET memory (tests, tools).</summary>

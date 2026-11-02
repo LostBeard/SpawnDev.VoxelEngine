@@ -21,7 +21,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
         }
 
         // The cyan top face under 50% ambient light, seen from above, with a light volume set up by the test (null: the pipeline's own, off)
-        private static async Task<(byte r, byte g, byte b, byte a)> LtRender(GPUDevice device, GPUQueue queue, Action<LightVolume>? setup, float darkFloor = 0.12f)
+        private static async Task<(byte r, byte g, byte b, byte a)> LtRender(GPUDevice device, GPUQueue queue, Action<LightVolume>? setup, float darkFloor = 0.12f, int columnHeight = LightVolume.DefaultColumnHeight, int minY = LightVolume.DefaultMinY)
         {
             var materials = new BlockMaterial[2];
             materials[1] = BlockMaterial.Uniform(BrLayerCyan);
@@ -36,7 +36,7 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             using var light = new LightVolume();
             if (setup != null)
             {
-                light.Init(device, queue, 4, 3);
+                light.Init(device, queue, 4, 3, columnHeight, minY);
                 light.DarkFloor = darkFloor;
                 setup(light);
                 pipeline.SetLight(light);
@@ -103,6 +103,36 @@ namespace SpawnDev.VoxelEngine.Demo.Shared.UnitTests
             LtExpect(await LtRender(device, queue, v => { v.SetWindow(10, 10); v.Assign(0, 0); }), 0, 128, 128, "outside the window");
             // Switched off, though the data is there
             LtExpect(await LtRender(device, queue, v => { v.SetWindow(0, 0); v.Write(v.Assign(0, 0), LtColumn(0x00)); v.Enabled = false; }), 0, 128, 128, "switched off");
+        });
+
+        [TestMethod]
+        public async Task Light_AColumn256HighFromY0_IsLitByItsOwnLayersTest() => await RunWebGPURenderTest(async (device, queue, accelerator) =>
+        {
+            // A world 256 high from y = 0: the cell above the block at (0, 0, 0) is layer 1 (it was layer 65 in a 384-high world from y = -64)
+            byte[] Column(LightVolume v, int layer, byte value)
+            {
+                var data = new byte[v.BytesPerColumn];
+                System.Array.Fill(data, (byte)0xF0);
+                data[layer * 256] = value;
+                return data;
+            }
+            LtExpect(await LtRender(device, queue, v =>
+            {
+                if (v.BytesPerColumn != 16 * 256 * 16 || v.ColumnHeight != 256 || v.MinY != 0) throw new Exception("the volume knows its height and floor");
+                v.SetWindow(0, 0); v.Write(v.Assign(0, 0), Column(v, 1, 0x00));
+            }, columnHeight: 256, minY: 0), 0, 15, 15, "dark at layer 1 of a 256-high column", 6);
+            // The dark cell at the default world's layer (65) is not the cell in front of the face: open sky
+            LtExpect(await LtRender(device, queue, v => { v.SetWindow(0, 0); v.Write(v.Assign(0, 0), Column(v, 65, 0x00)); }, columnHeight: 256, minY: 0), 0, 128, 128, "layer 65 is another cell");
+            // A second slot starts where the first ends (65,536 bytes on): the light of column (1, 0) is not column (0, 0)'s
+            LtExpect(await LtRender(device, queue, v => { v.SetWindow(0, 0); v.Write(v.Assign(1, 0), Column(v, 1, 0x00)); v.Write(v.Assign(0, 0), Column(v, 1, 0xF0)); }, columnHeight: 256, minY: 0), 0, 128, 128, "each slot its own bytes");
+            // A column of the wrong size is refused
+            using var wrong = new LightVolume();
+            wrong.Init(device, queue, 2, 3, 256, 0);
+            wrong.SetWindow(0, 0);
+            bool refused = false;
+            try { wrong.Write(wrong.Assign(0, 0), new byte[LightVolume.ColumnBytes]); } catch (ArgumentException) { refused = true; }
+            if (!refused) throw new Exception("98,304 bytes do not fit a 256-high column");
+            if (LightVolume.MaxSlots(256) != 1950 || LightVolume.MaxSlots() != 1300) throw new Exception($"slot limits: {LightVolume.MaxSlots(256)}, {LightVolume.MaxSlots()}");
         });
 
         [TestMethod]

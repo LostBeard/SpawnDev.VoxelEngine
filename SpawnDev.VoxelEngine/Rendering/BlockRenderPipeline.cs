@@ -36,7 +36,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         private BiomeTintMap? _biomeTints, _ownedBiomeTints;
         private LightVolume? _light, _ownedLight;
         private GPUTextureView? _textureView;
-        private int _atlasTilesPerRow = 1, _atlasTileSize = 1, _atlasTileCount = 1;
+        private int _atlasTilesPerRow = 1, _atlasTileSize = 1, _atlasTileCount = 1, _atlasMipLevels = 1;
         private readonly Dictionary<GPUBuffer, GPUBindGroup> _quadBindGroups = new();
         private int _maxSections;
 
@@ -59,6 +59,7 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// <param name="maxSections">How many section origins the origin buffer holds (the draw's firstInstance must be below it).</param>
         public void Init(GPUDevice device, GPUQueue queue, string colorFormat, int maxSections = 1 << 16)
         {
+            _colorFormat = colorFormat;
             _device = device;
             _queue = queue;
             _maxSections = maxSections;
@@ -206,6 +207,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             _textureView = textures.View;
             _atlasTilesPerRow = textures.TilesPerRow;
             _atlasTileSize = textures.TileSize;
+            _atlasMipLevels = textures.MipLevels;
             _atlasTileCount = textures.TileCount;
             SetAnimations(System.Array.Empty<TextureAnimation>());
         }
@@ -249,6 +251,7 @@ namespace SpawnDev.VoxelEngine.Rendering
 
         private void RebuildFrameBindGroup()
         {
+            FrameBindGroupVersion++;
             _frameBindGroup?.Dispose();
             _frameBindGroup = _device!.CreateBindGroup(new GPUBindGroupDescriptor
             {
@@ -336,6 +339,7 @@ namespace SpawnDev.VoxelEngine.Rendering
             var f = frame;
             f.AtlasTilesPerRow = _atlasTilesPerRow;   // the atlas in use, not something a caller should have to repeat
             f.AtlasTileSize = _atlasTileSize;
+            f.AtlasMipLevels = _atlasMipLevels;
             unsafe
             {
                 fixed (byte* p = bytes) *(BlockFrameUniforms*)p = f;
@@ -393,6 +397,68 @@ namespace SpawnDev.VoxelEngine.Rendering
                 QuadBufferBinds++;
                 _lastQuadBuffer = quadBuffer;
             }
+        }
+
+        // ---- render bundles: the draws of a whole frame recorded ONCE, executed in every eye (and again next frame while nothing changed) ----
+        //
+        // Recording a draw costs a call into the browser (about 2 us on a desktop, several times that on a headset's CPU), and a frame draws hundreds of columns twice, once for each eye. A bundle holds the
+        // same commands (pipeline, bind groups, draws) as the pass would take and runs them with ONE call: record it when the set of draws changes, execute it for each eye. The frame's uniforms are
+        // read when the bundle RUNS, so write the next eye's matrices (BeginFrame) between the passes that execute it, as long as each pass is submitted before the next write.
+
+        /// <summary>Changes whenever the frame bind group is made again (textures, light, biome tints set): a bundle recorded before still points at the old one and must be recorded again.</summary>
+        public int FrameBindGroupVersion { get; private set; }
+
+        private string _colorFormat = "bgra8unorm";
+        private GPURenderBundleEncoder? _lastBundleEncoder;
+        private Pass _lastBundleKind;
+        private GPUBuffer? _lastBundleBuffer;
+
+        // createRenderBundleEncoder takes the formats of the passes it will run in: the wrapper's descriptor lacks them, so they are added here (the extra members of the base are ignored by the browser)
+        private sealed class BundleLayout : GPURenderBundleEncoderDescriptor
+        {
+            [System.Text.Json.Serialization.JsonPropertyName("colorFormats")] public string[] ColorFormats { get; set; } = System.Array.Empty<string>();
+            [System.Text.Json.Serialization.JsonPropertyName("depthStencilFormat")] public string DepthStencilFormat { get; set; } = ReversedZHelper.DepthFormat;
+            [System.Text.Json.Serialization.JsonPropertyName("sampleCount")] public int SampleCount { get; set; } = 1;
+        }
+
+        /// <summary>Start recording a bundle for passes drawn like <see cref="BeginRenderPass"/>'s (this pipeline's colour format, reversed-Z depth). Record with <see cref="BindBundle"/> and <see cref="DrawInBundle"/>, then <c>Finish()</c> it.</summary>
+        public GPURenderBundleEncoder BeginBundle()
+        {
+            if (_frameBindGroup == null) throw new InvalidOperationException("Call Init first");
+            var encoder = _device!.CreateRenderBundleEncoder(new BundleLayout { Layout = GPUAutoLayoutMode.Auto, ColorFormats = new[] { _colorFormat } });
+            _lastBundleEncoder = encoder;
+            _lastBundleKind = (Pass)(-1);   // none yet: the first bind sets the pipeline
+            _lastBundleBuffer = null;
+            return encoder;
+        }
+
+        /// <summary><see cref="BindPass"/> for a bundle.</summary>
+        public void BindBundle(GPURenderBundleEncoder bundle, Pass kind, GPUBuffer quadBuffer)
+        {
+            if (!ReferenceEquals(bundle, _lastBundleEncoder) || kind != _lastBundleKind)
+            {
+                bundle.SetPipeline(kind switch { Pass.Opaque => _opaque!, Pass.Cross => _cross!, _ => _water! });
+                bundle.SetBindGroup(0, _frameBindGroup);
+                _lastBundleEncoder = bundle;
+                _lastBundleKind = kind;
+                _lastBundleBuffer = null;
+            }
+            if (!ReferenceEquals(quadBuffer, _lastBundleBuffer))
+            {
+                bundle.SetBindGroup(1, GetQuadBindGroup(quadBuffer));
+                _lastBundleBuffer = quadBuffer;
+            }
+        }
+
+        /// <summary><see cref="Draw"/> for a bundle.</summary>
+        public void DrawInBundle(GPURenderBundleEncoder bundle, int firstQuad, int quadCount, int sectionIndex)
+            => bundle.Draw((uint)(quadCount * 6), 1, (uint)(firstQuad * 6), (uint)sectionIndex);
+
+        /// <summary>Run a bundle in a pass. Afterwards the pass has no pipeline or bind groups (the browser clears them): the next <see cref="BindPass"/> sets them again.</summary>
+        public void ExecuteBundle(GPURenderPassEncoder pass, GPURenderBundle bundle)
+        {
+            pass.ExecuteBundles(new[] { bundle });
+            _lastPass = null;
         }
 
         // What BindPass last set on which pass (so it can skip repeats)

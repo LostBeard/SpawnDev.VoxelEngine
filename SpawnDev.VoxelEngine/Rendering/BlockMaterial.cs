@@ -144,7 +144,8 @@ namespace SpawnDev.VoxelEngine.Rendering
         /// <summary>Filled in by <see cref="BlockRenderPipeline.BeginFrame"/> from the atlas in use: tiles per row of the atlas, and a tile's side in pixels. Callers leave them 0.</summary>
         public float AtlasTilesPerRow;
         public float AtlasTileSize;
-        private float _reserved;
+        /// <summary>Levels of the atlas (filled in like the two before it).</summary>
+        public float AtlasMipLevels;
 
         public const int SizeInBytes = 176;
     }

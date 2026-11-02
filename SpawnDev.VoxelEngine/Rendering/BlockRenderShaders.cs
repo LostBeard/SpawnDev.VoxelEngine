@@ -34,7 +34,7 @@ struct Frame {
     ambient: vec4<f32>,    // rgb, w = fill light strength
     fogColor: vec4<f32>,
     fogRange: vec4<f32>,   // x = start, y = end
-    timeAtlas: vec4<f32>,  // x = seconds, y = atlas tiles per row, z = tile size in pixels
+    timeAtlas: vec4<f32>,  // x = seconds, y = atlas tiles per row, z = tile size in pixels, w = levels of the atlas
 };
 
 struct BlockMaterial {
@@ -59,14 +59,14 @@ struct BlockMaterial {
 @group(0) @binding(8) var biomeFoliage: texture_2d<f32>;
 @group(0) @binding(9) var biomeWater: texture_2d<f32>;
 @group(0) @binding(10) var biomeSampler: sampler;
-// The light of the columns round the camera (LightVolume): window = origin column x, z, side in columns, on (1) or off (0); tune = how bright where no sky reaches, how strong block light is
+// The light of the columns round the camera (LightVolume): window = origin column x, z, side in columns, on (1) or off (0); tune = how bright where no sky reaches, how strong block light is, a column's height in blocks, the world y of its bottom
 struct LightParams {
     window: vec4<f32>,
     tune: vec4<f32>,
 };
 @group(0) @binding(11) var<uniform> lighting: LightParams;
 @group(0) @binding(12) var<storage, read> lightSlots: array<i32>;   // the slot of each column of the window, or -1
-@group(0) @binding(13) var<storage, read> lightData: array<u32>;    // 98,304 bytes a slot: sky light in the high four bits of a block's byte, block light in the low four
+@group(0) @binding(13) var<storage, read> lightData: array<u32>;    // a column's height * 256 bytes a slot (98,304 at 384): sky light in the high four bits of a block's byte, block light in the low four
 @group(1) @binding(0) var<storage, read> quads: array<vec2<u32>>;   // PackedQuad: i64 as (lo, hi)
 
 const NO_TEXTURE: u32 = 0xFFFFu;
@@ -79,6 +79,8 @@ const FLAG_PLANT_BOTTOM: u32 = 256u;   // plants take face 5's tile and tint (a 
 
 // Two triangles per quad from four corners: (0,1,2) and (1,3,2). corner = a*2 + b: a runs along the quad's A axis, b along its B axis.
 const cornerOrder = array<u32, 6>(0u, 1u, 2u, 1u, 3u, 2u);
+// The same quad cut along the other diagonal (0 to 3), still counter-clockwise: used where the corners' ambient occlusion says the cut should run between the brighter pair
+const cornerOrderFlipped = array<u32, 6>(0u, 1u, 3u, 0u, 3u, 2u);
 
 // Brightness of each face before lighting: sides, top, bottom, plants. The fragment shader darkens bottoms and sides further.
 const faceBase = array<f32, 8>(0.88, 0.88, 0.82, 0.82, 1.05, 0.70, 1.0, 1.0);
@@ -93,14 +95,23 @@ struct VOut {
     @location(5) @interpolate(flat) alpha: f32,
     @location(6) @interpolate(flat) tintKind: u32,   // 0 = the colour is in vcolor; 1 grass, 2 foliage, 3 water = times the biome map's colour at the pixel
     @location(7) @interpolate(flat) emissive: f32,   // 1 = the block makes its own light
+    @location(8) ao: f32,   // how open the corner is (1 open .. 0.4 shut), the mesher's ambient occlusion across the face
 };
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) section: u32) -> VOut {
     let quadIdx = vertexID / 6u;
-    let corner = cornerOrder[vertexID % 6u];
     let lo = quads[quadIdx].x;
     let hi = quads[quadIdx].y;
+    // Bits 39-46: the ambient occlusion of the four corners (2 bits each, corner = a * 2 + b: 0 open .. 3 shut), baked by the mesher
+    let aoBits = (hi >> 7u) & 0xFFu;
+    var corner = cornerOrder[vertexID % 6u];
+    if (aoBits != 0u) {
+        // Cut the quad along the diagonal between the corners that are more alike in the light: where one corner is dark the cut must not run through it
+        let darkOn03 = (aoBits & 3u) + ((aoBits >> 6u) & 3u);
+        let darkOn12 = ((aoBits >> 2u) & 3u) + ((aoBits >> 4u) & 3u);
+        if (darkOn03 < darkOn12) { corner = cornerOrderFlipped[vertexID % 6u]; }
+    }
 
     // PackedQuad: x 0-3, y 4-7, z 8-11, width-1 12-15, height-1 16-19, face 20-22, block type 23-34 (spans lo/hi)
     let qx = f32(lo & 0xFu);
@@ -297,17 +308,32 @@ fn vs_main(@builtin(vertex_index) vertexID: u32, @builtin(instance_index) sectio
     out.vcolor = min(base * shade, vec3<f32>(1.0, 1.0, 1.0));
     out.alpha = m.tint.w;
     out.emissive = select(0.0, 1.0, (m.flags & FLAG_EMISSIVE) != 0u);
+    out.ao = 1.0 - 0.2 * f32((aoBits >> (2u * corner)) & 3u);
     return out;
 }
 
-// One texel of an atlas tile, the tile repeating: uv is in blocks (0..w, 0..h across the quad), v counting DOWN the image
-fn blockTexel(tile: u32, uv: vec2<f32>) -> vec4<f32> {
-    let size = u32(frame.timeAtlas.z);
+// One texel of an atlas tile, the tile repeating: uv is in blocks (0..w, 0..h across the quad), v counting DOWN the image. A block far away (or small, on a
+// tabletop) covers a pixel with many texels: taking one of them flickers as the head moves, so the texel comes from the level of the atlas that fits (the
+// pixel's footprint in texels, from the screen derivatives of uv), the two nearest levels blended. Close up it is the exact texel, as the game draws it.
+fn blockTexelAt(tile: u32, uv: vec2<f32>, level: u32) -> vec4<f32> {
+    let size = max(u32(frame.timeAtlas.z) >> level, 1u);
     let perRow = u32(frame.timeAtlas.y);
     let p = vec2<u32>(max(uv, vec2<f32>(0.0, 0.0)) * f32(size));
     let x = (tile % perRow) * size + (p.x % size);
     let y = (tile / perRow) * size + (p.y % size);
-    return textureLoad(blockTextures, vec2<i32>(i32(x), i32(y)), 0);
+    return textureLoad(blockTextures, vec2<i32>(i32(x), i32(y)), i32(level));
+}
+
+fn blockTexel(tile: u32, uv: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32>) -> vec4<f32> {
+    let size = frame.timeAtlas.z;
+    let footprint = max(length(ddx), length(ddy)) * size;
+    let top = max(frame.timeAtlas.w - 1.0, 0.0);
+    let lod = clamp(log2(max(footprint, 1.0)), 0.0, top);
+    let lo = u32(floor(lod));
+    let a = blockTexelAt(tile, uv, lo);
+    let f = lod - floor(lod);
+    if (f < 0.01 || lod >= top) { return a; }
+    return mix(a, blockTexelAt(tile, uv, lo + 1u), f);
 }
 
 fn applyFog(color: vec3<f32>, worldPos: vec3<f32>) -> vec3<f32> {
@@ -331,11 +357,12 @@ fn lightLevels(worldPos: vec3<f32>, normal: vec3<f32>) -> vec2<f32> {
     let side = i32(lighting.window.z);
     let wx = (cell.x >> 4u) - i32(lighting.window.x);
     let wz = (cell.z >> 4u) - i32(lighting.window.y);
-    let y = cell.y + 64;
-    if (wx < 0 || wz < 0 || wx >= side || wz >= side || y < 0 || y >= 384) { return vec2<f32>(15.0, 0.0); }
+    let y = cell.y - i32(lighting.tune.w);
+    let height = i32(lighting.tune.z);
+    if (wx < 0 || wz < 0 || wx >= side || wz >= side || y < 0 || y >= height) { return vec2<f32>(15.0, 0.0); }
     let slot = lightSlots[wz * side + wx];
     if (slot < 0) { return vec2<f32>(15.0, 0.0); }
-    let index = u32(slot) * 98304u + u32(y) * 256u + u32(cell.z & 15) * 16u + u32(cell.x & 15);
+    let index = u32(slot) * u32(height * 256) + u32(y) * 256u + u32(cell.z & 15) * 16u + u32(cell.x & 15);
     let packed = (lightData[index >> 2u] >> ((index & 3u) * 8u)) & 255u;
     return vec2<f32>(f32(packed >> 4u), f32(packed & 15u));
 }
@@ -356,9 +383,11 @@ fn applyLevels(skyAndSun: vec3<f32>, levels: vec2<f32>) -> vec3<f32> {
 // Opaque and plant pass: alpha cutout (leaf gaps, plant outlines), sun + ambient + a fixed cool fill light, fog.
 @fragment
 fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4<f32> {
+    let ddx = dpdx(in.uv);
+    let ddy = dpdy(in.uv);
     var color = in.vcolor;
     if (in.layer != NO_TEXTURE) {
-        let t = blockTexel(in.layer, in.uv);
+        let t = blockTexel(in.layer, in.uv, ddx, ddy);
         if (t.a < 0.3) { discard; }
         color = color * t.xyz;
     }
@@ -377,6 +406,8 @@ fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) v
         + frame.sunColor.xyz * sunI * frame.sunColor.w
         + vec3<f32>(0.55, 0.65, 0.85) * fillI * frame.ambient.w;
     if (lighting.window.w > 0.5) { light = applyLevels(light, lightLevels(in.worldPos, n)); }
+    // The corners' occlusion (baked into the quad by the mesher) darkens all the light but a block's own
+    light = light * in.ao;
     // A block that makes its own light is bright at night too (its shade by the face stays: the face still faces the way it does)
     light = max(light, vec3<f32>(in.emissive, in.emissive, in.emissive));
     return vec4<f32>(applyFog(color * light, in.worldPos), 1.0);
@@ -385,9 +416,11 @@ fn fs_main(in: VOut, @builtin(front_facing) frontFacing: bool) -> @location(0) v
 // Water pass (alpha blended, no depth write): the block's alpha, a slightly brighter ambient, the sun, fog.
 @fragment
 fn fs_water(in: VOut) -> @location(0) vec4<f32> {
+    let ddx = dpdx(in.uv);
+    let ddy = dpdy(in.uv);
     var color = in.vcolor;
     if (in.layer != NO_TEXTURE) {
-        let t = blockTexel(in.layer, in.uv);
+        let t = blockTexel(in.layer, in.uv, ddx, ddy);
         color = color * t.xyz;
     }
     if (in.tintKind != 0u) { color = color * biomeColour(in.tintKind, in.worldPos.xz); }

@@ -119,7 +119,8 @@ namespace SpawnDev.VoxelEngine.Meshing
         private readonly Action<Index1D, ArrayView<ushort>, ArrayView<ushort>, ArrayView<ushort>, ArrayView<ushort>, ArrayView<ushort>,
             ArrayView<int>, ArrayView<long>, ArrayView<long>, int, int, int, int> _occupancy;
         private readonly Action<Index1D, ArrayView<long>, ArrayView<long>, ArrayView<long>, int> _faceCull;
-        private readonly Action<Index1D, ArrayView<long>, ArrayView<ushort>, ArrayView<long>, ArrayView<int>, int, int> _merge;
+        private readonly Action<Index1D, ArrayView<long>, ArrayView<ushort>, ArrayView<long>, ArrayView<int>, ArrayView<int>, int, int, int> _merge;
+        private readonly Action<Index1D, ArrayView<long>, ArrayView<long>, ArrayView<int>, int, int> _aoStage;
         private readonly Action<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int> _plants;
         private readonly Action<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<uint>, ArrayView<long>, ArrayView<long>, ArrayView<int>, int> _shapes;
         private readonly Action<Index1D, ArrayView<long>, ArrayView<int>, ArrayView<int>, ArrayView<long>, int, int> _compact;
@@ -129,6 +130,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         private bool _hasShapes;
         private readonly MemoryBuffer1D<long, Stride1D.Dense> _emit, _occlude, _faceMasks;
         private readonly MemoryBuffer1D<long, Stride1D.Dense> _scratchOpaque, _scratchPlants, _scratchWater;
+        private readonly MemoryBuffer1D<int, Stride1D.Dense> _ao;             // the corner occlusion of each visible face (AmbientOcclusion)
         private readonly MemoryBuffer1D<int, Stride1D.Dense> _counters;       // 3 passes x (sections + 1)
         private readonly int[] _zeroCounters;
         private readonly MemoryBuffer1D<int, Stride1D.Dense>[] _sectionStart; // one per pass
@@ -155,6 +157,14 @@ namespace SpawnDev.VoxelEngine.Meshing
         /// </summary>
         public QuadArena? Arena { get; set; }
 
+        /// <summary>
+        /// Bake ambient occlusion into the quads (default off): every visible block face of the opaque pass gets the darkness of its four corners (0..3 each, from the blocks that occlude beside and in front of
+        /// the corner; <see cref="PackedQuad.UnpackFull"/>'s <c>ao</c>) and the block renderer shades by it per vertex, with the quad's diagonal chosen to match. Costs the frame nothing: faces merge only along
+        /// an axis their occlusion does not change along, so a wall's foot or a floor's edge is more, smaller quads and a flat floor is the same few. A missing neighbour column is open for it. Not for plants,
+        /// water or shaped blocks. Set before meshing.
+        /// </summary>
+        public bool AmbientOcclusion { get; set; }
+
         public ColumnMesher(Accelerator accelerator, int sectionCount = 24)
         {
             if (sectionCount < 1) throw new ArgumentOutOfRangeException(nameof(sectionCount));
@@ -167,8 +177,9 @@ namespace SpawnDev.VoxelEngine.Meshing
                 ColumnMeshKernels.OccupancyKernel);
             _faceCull = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<long>, ArrayView<long>, int>(
                 ColumnMeshKernels.FaceCullKernel);
-            _merge = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<ushort>, ArrayView<long>, ArrayView<int>, int, int>(
+            _merge = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<ushort>, ArrayView<long>, ArrayView<int>, ArrayView<int>, int, int, int>(
                 ColumnMeshKernels.GreedyMergeKernel);
+            _aoStage = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<long>, ArrayView<long>, ArrayView<int>, int, int>(ColumnMeshKernels.AoKernel);
             _plants = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<long>, ArrayView<int>, int>(
                 ColumnMeshKernels.PlantKernel);
             _shapes = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ushort>, ArrayView<int>, ArrayView<uint>, ArrayView<long>, ArrayView<long>, ArrayView<int>, int>(
@@ -181,6 +192,7 @@ namespace SpawnDev.VoxelEngine.Meshing
             _emit = accelerator.Allocate1D<long>(sectionCount * ColumnMeshKernels.PaddedCellsPerSection);
             _occlude = accelerator.Allocate1D<long>(sectionCount * ColumnMeshKernels.PaddedCellsPerSection);
             _faceMasks = accelerator.Allocate1D<long>(sectionCount * 6 * ColumnMeshKernels.ColumnsCellsPerLayer);
+            _ao = accelerator.Allocate1D<int>(sectionCount * 6 * ColumnMeshKernels.CellsPerSection);
             long scratch = (long)sectionCount * ColumnMeshKernels.ScratchQuadsPerSection;
             _scratchOpaque = accelerator.Allocate1D<long>(scratch);
             _scratchPlants = accelerator.Allocate1D<long>(scratch);
@@ -214,6 +226,68 @@ namespace SpawnDev.VoxelEngine.Meshing
             }
             browser.CopyFromJS(blockIds);
             return buffer;
+        }
+
+        /// <summary>
+        /// A column buffer made from block types that fit a byte (a world of fewer than 256 types): one byte per block, x + z * 16 + y * 256 for
+        /// y in [0, 16 * SectionCount). The bytes are widened to the buffer's ushorts and uploaded. The bytes pass through the .NET heap, so for a world
+        /// that is streamed in (large, fetched) take <see cref="CreateColumnBufferFromJS"/>; this is for a world that is generated or edited in .NET.
+        /// </summary>
+        public MemoryBuffer1D<ushort, Stride1D.Dense> CreateColumnBuffer(ReadOnlySpan<byte> blockIds)
+        {
+            CheckColumnLength(blockIds.Length);
+            var buffer = _accelerator.Allocate1D<ushort>(_columnLength);
+            try { buffer.CopyFromCPU(Widen(blockIds)); }
+            catch { buffer.Dispose(); throw; }
+            return buffer;
+        }
+
+        /// <summary>A column buffer made from block types, as ushorts (12 bits used), x + z * 16 + y * 256 for y in [0, 16 * SectionCount).</summary>
+        public MemoryBuffer1D<ushort, Stride1D.Dense> CreateColumnBuffer(ReadOnlySpan<ushort> blockIds)
+        {
+            CheckColumnLength(blockIds.Length);
+            var buffer = _accelerator.Allocate1D<ushort>(_columnLength);
+            try { buffer.CopyFromCPU(blockIds.ToArray()); }
+            catch { buffer.Dispose(); throw; }
+            return buffer;
+        }
+
+        /// <summary>
+        /// Replace the blocks of a column buffer in place (a block dug or placed: the column is uploaded again, the buffer and what points at it stay),
+        /// from one byte per block as <see cref="CreateColumnBuffer(ReadOnlySpan{byte})"/> takes. Mesh the column again after it.
+        /// </summary>
+        public void WriteColumnBuffer(MemoryBuffer1D<ushort, Stride1D.Dense> existing, ReadOnlySpan<byte> blockIds)
+        {
+            CheckColumnLength(blockIds.Length);
+            CheckExisting(existing);
+            existing.CopyFromCPU(Widen(blockIds));
+        }
+
+        /// <summary>Replace the blocks of a column buffer in place, from ushort block types.</summary>
+        public void WriteColumnBuffer(MemoryBuffer1D<ushort, Stride1D.Dense> existing, ReadOnlySpan<ushort> blockIds)
+        {
+            CheckColumnLength(blockIds.Length);
+            CheckExisting(existing);
+            existing.CopyFromCPU(blockIds.ToArray());
+        }
+
+        private void CheckColumnLength(int blocks)
+        {
+            if (blocks != _columnLength)
+                throw new ArgumentException($"A column of {_sections} sections is {_columnLength} blocks, got {blocks}", "blockIds");
+        }
+
+        private void CheckExisting(MemoryBuffer1D<ushort, Stride1D.Dense> existing)
+        {
+            if (existing.Length != _columnLength)
+                throw new ArgumentException($"A column of {_sections} sections is {_columnLength} blocks, the buffer has {existing.Length}", nameof(existing));
+        }
+
+        private static ushort[] Widen(ReadOnlySpan<byte> blockIds)
+        {
+            var wide = new ushort[blockIds.Length];
+            for (int i = 0; i < wide.Length; i++) wide[i] = blockIds[i];
+            return wide;
         }
 
         /// <summary>
@@ -272,12 +346,12 @@ namespace SpawnDev.VoxelEngine.Meshing
             _counters.CopyFromCPU(_zeroCounters);
 
             // Opaque pass, then water pass: same kernels, different bits of the class table
-            RunCubePass(column.View, vNegX, vPosX, vNegZ, vPosZ, BlockClass.OpaqueShift, missing, solid, _scratchOpaque, _counters.View.SubView(0, stride));
+            RunCubePass(column.View, vNegX, vPosX, vNegZ, vPosZ, BlockClass.OpaqueShift, missing, solid, _scratchOpaque, _counters.View.SubView(0, stride), AmbientOcclusion);
             // The shaped blocks' boxes go in the opaque list; the occupancy the pass just made (what hides what) is still in place, the water pass is about to replace it
             if (_hasShapes)
                 _shapes((Index1D)(_sections * ColumnMeshKernels.CellsPerSection),
                     column.View, _typeFlags.View, _shapeWords.View, _occlude.View, _scratchOpaque.View, _counters.View.SubView(0, stride), _sections);
-            RunCubePass(column.View, vNegX, vPosX, vNegZ, vPosZ, BlockClass.WaterShift, missing, solid, _scratchWater, _counters.View.SubView(2 * stride, stride));
+            RunCubePass(column.View, vNegX, vPosX, vNegZ, vPosZ, BlockClass.WaterShift, missing, solid, _scratchWater, _counters.View.SubView(2 * stride, stride), false);
 
             // Plants: two quads per plant block
             _plants((Index1D)(_sections * ColumnMeshKernels.CellsPerSection),
@@ -298,14 +372,16 @@ namespace SpawnDev.VoxelEngine.Meshing
 
         private void RunCubePass(
             ArrayView<ushort> column, ArrayView<ushort> negX, ArrayView<ushort> posX, ArrayView<ushort> negZ, ArrayView<ushort> posZ,
-            int passShift, int missing, int solid, MemoryBuffer1D<long, Stride1D.Dense> scratch, ArrayView<int> counters)
+            int passShift, int missing, int solid, MemoryBuffer1D<long, Stride1D.Dense> scratch, ArrayView<int> counters, bool occlusion)
         {
             _occupancy((Index1D)(_sections * ColumnMeshKernels.PaddedCellsPerSection),
                 column, negX, posX, negZ, posZ, _typeFlags.View, _emit.View, _occlude.View, passShift, missing, solid, _sections);
             _faceCull((Index1D)(_sections * ColumnMeshKernels.ColumnsCellsPerLayer), _emit.View, _occlude.View, _faceMasks.View, _sections);
+            if (occlusion) _aoStage((Index1D)(_sections * ColumnMeshKernels.ColumnsCellsPerLayer), _occlude.View, _faceMasks.View, _ao.View, _sections, missing);
+            int useAo = occlusion ? 1 : 0;
             // +X -X +Z -Z, then +Y -Y: separate launches because the Y faces of different layers share mask words
-            _merge((Index1D)(_sections * 4 * ColumnMeshKernels.SectionSize), _faceMasks.View, column, scratch.View, counters, 0, _sections);
-            _merge((Index1D)(_sections * 2 * ColumnMeshKernels.SectionSize), _faceMasks.View, column, scratch.View, counters, 4, _sections);
+            _merge((Index1D)(_sections * 4 * ColumnMeshKernels.SectionSize), _faceMasks.View, column, scratch.View, counters, _ao.View, 0, _sections, useAo);
+            _merge((Index1D)(_sections * 2 * ColumnMeshKernels.SectionSize), _faceMasks.View, column, scratch.View, counters, _ao.View, 4, _sections, useAo);
         }
 
         private ColumnMesh.QuadList Compact(int[] counters, int offset, MemoryBuffer1D<long, Stride1D.Dense> scratch, MemoryBuffer1D<int, Stride1D.Dense> sectionStartBuffer)
@@ -336,7 +412,7 @@ namespace SpawnDev.VoxelEngine.Meshing
         {
             _typeFlags.Dispose();
             _shapeWords.Dispose();
-            _emit.Dispose(); _occlude.Dispose(); _faceMasks.Dispose();
+            _emit.Dispose(); _occlude.Dispose(); _faceMasks.Dispose(); _ao.Dispose();
             _scratchOpaque.Dispose(); _scratchPlants.Dispose(); _scratchWater.Dispose();
             _counters.Dispose();
             foreach (var b in _sectionStart) b.Dispose();
