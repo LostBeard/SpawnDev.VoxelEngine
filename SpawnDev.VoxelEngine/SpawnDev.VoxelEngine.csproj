@@ -28,8 +28,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="SpawnDev.ILGPU" Version="5.3.7" />
-		<PackageReference Include="SpawnDev.SpawnJS.Blazor" Version="3.0.4" />
+		<PackageReference Include="SpawnDev.ILGPU" Version="5.4.14" />
+		<PackageReference Include="SpawnDev.SpawnJS.Blazor" Version="3.0.7" />
 	</ItemGroup>
 
 	<ItemGroup>
