@@ -109,7 +109,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
         let phase = u32(sky.zenith.w + 0.5) % 8u;
         let moonRect = vec4<f32>(sky.moonRect.x + f32(phase % 4u) * sky.moonRect.z, sky.moonRect.y + f32(phase / 4u) * sky.moonRect.w, sky.moonRect.z, sky.moonRect.w);
         let moon = disc(dir, -sky.sunDir.xyz, 0.11, moonRect);
-        col = mix(col, moon.xyz, moon.w * (1.0 - weather));
+        // Added, as the game adds it (and the sun, above): the texture is opaque with a black background, so mixed over the sky it was a black square
+        col = col + moon.xyz * moon.w * (1.0 - weather);
     }
 
     // Clouds: a flat layer at a height, one map pixel to 12 blocks, sliding along x; seen from below only

@@ -2,6 +2,9 @@
 
 ## Unreleased - thin blocks, plants that stand in water
 
+### Fixed
+- **The moon had a black square round it** (built as 0.2.0-rc.5-local.22). The game's moon texture is opaque with a black background and is meant to be added to the sky, as the sun was; `SkyShaders` mixed it over the sky instead. Found by TJ in the AubsCraft viewer.
+
 ### Changed
 - **The GPU meshers refuse a device without atomics (`MeshingSupport`)** (built as 0.2.0-rc.5-local.21). `ColumnMesher`,
   `HeightmapMesher` and `VoxelMeshPipeline` take every output quad's slot from `Atomic.Add`'s return value and clear face masks
