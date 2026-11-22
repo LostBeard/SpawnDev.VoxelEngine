@@ -57,7 +57,9 @@ namespace PlaywrightMultiTest
                 sw.Stop();
                 TestResultsWriter.RecordResult(test.Name, "Pass", null, sw.Elapsed.TotalMilliseconds);
             }
-            catch (Exception ex)
+            // Assert.Ignore above throws IgnoreException (an NUnit ResultStateException): that skip is already recorded,
+            // and catching it here recorded the same test a second time as "Fail" in playwright-*.json (Codecs, 2026-11-22).
+            catch (Exception ex) when (ex is not ResultStateException)
             {
                 sw.Stop();
                 TestResultsWriter.RecordResult(test.Name, "Fail", ex.Message, sw.Elapsed.TotalMilliseconds);
