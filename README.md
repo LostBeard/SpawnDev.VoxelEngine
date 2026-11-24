@@ -1,8 +1,20 @@
+<div align="center">
+
 # SpawnDev.VoxelEngine
 
-[![NuGet](https://img.shields.io/nuget/v/SpawnDev.VoxelEngine.svg?)](https://www.nuget.org/packages/SpawnDev.VoxelEngine)
+**High-performance voxel engine built on [SpawnDev.ILGPU](https://github.com/LostBeard/SpawnDev.ILGPU).**
 
-**High-performance voxel engine built on [SpawnDev.ILGPU](https://github.com/LostBeard/SpawnDev.ILGPU). GPU-accelerated meshing, culling, LOD, terrain carving, physics, destruction, and VR rendering - from a single C# codebase targeting WebGPU, WebGL, Wasm, CUDA, OpenCL, and CPU.**
+GPU-accelerated meshing, culling, LOD, terrain carving, physics, destruction, and VR rendering - from a single C# codebase targeting WebGPU, WebGL, Wasm, CUDA, OpenCL, and CPU.
+
+[![NuGet](https://img.shields.io/nuget/v/SpawnDev.VoxelEngine.svg?label=nuget&logo=nuget)](https://www.nuget.org/packages/SpawnDev.VoxelEngine)
+[![Downloads](https://img.shields.io/nuget/dt/SpawnDev.VoxelEngine.svg?label=downloads)](https://www.nuget.org/packages/SpawnDev.VoxelEngine)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512bd4.svg)](https://dotnet.microsoft.com/)
+[![Sponsor](https://img.shields.io/badge/sponsor-LostBeard-ea4aaa.svg?logo=githubsponsors)](https://github.com/sponsors/LostBeard)
+
+[Changelog](CHANGELOG.md)
+
+</div>
 
 > **Status:** `0.2.0-rc.3` - release candidate. The block renderer and the GPU meshers (`BlockRenderPipeline`, `ColumnMesher`, `HeightmapMesher`) run AubsCraft's 3D viewer in production; the rest of the API is functional and consumed by Lost Spawns. Expect iteration during the RC cycle.
 
