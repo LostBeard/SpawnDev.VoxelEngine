@@ -145,7 +145,7 @@ SpawnDev.VoxelEngine is built upon [SpawnDev.ILGPU](https://github.com/LostBeard
 
 ### The SpawnDev Crew
 
-SpawnDev.VoxelEngine is developed collaboratively by TJ (Todd Tanner / [@LostBeard](https://github.com/LostBeard)) and a team of AI agents who contribute extensively to research, analysis, architecture design, and code development. This project represents a new model of human-AI collaboration in open source development.
+SpawnDev libraries are built and maintained by the SpawnDev development team, which uses AI agents in its daily work.
 
 - **LostBeard** (Todd Tanner) - Captain, library author, keeper of the vision.
 - **Riker** (Claude CLI #1) - First Officer, implementation lead on consuming projects.
